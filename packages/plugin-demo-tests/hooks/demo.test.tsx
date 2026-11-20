@@ -6,17 +6,46 @@ import { describe, expect, mock, test } from 'claude-code/testing'
  * module the demo imports and the script does not copy fails the load, so every case here fails with it.
  *
  * Covered: `/demo mascot` and `/demo fulltime` (what each replies; the WHOLE tree the band draws on the terminal, frame
- * by frame; the desktop's Svg, its two drawings alternating; the redraws the play asks the engine for, one a frame and
+ * by frame; the desktop's Svg, by its whole source, frame by frame; the redraws the play asks the engine for, one a frame and
  * none after it; the band empty again after the play's length), a play replaced by the next one or started again, and
- * `/demo off` (the play ended, the look's clear asked). Not run here: the scene commands (a team, `band`, `pitch`, `idle`, `live`, `goal`, `other`, `left`,
- * `right`), whose drawings the plugin's own kit pins (scenes.test.tsx); and what the app paints, which is a person's
- * look. The team is the demo's first, Spain, at home to Argentina; the word is English's.
+ * `/demo off` (the play ended, the look's clear asked); and the celebration after a language word (`es`) and after a
+ * team word (`argentina`, the away side). Not looked at here: the scenes a command sets as the look (a team's stadium,
+ * `band`, `pitch`, `idle`, `live`, `goal`, `other`, `left`, `right`), whose drawings the plugin's own kit pins
+ * (scenes.test.tsx); and what the app paints, which is a person's look. Unless a case says otherwise the team is the
+ * demo's first, Spain, at home to Argentina, and the word is English's.
  */
 const NOW = Date.parse('2026-10-10T15:00:00.000Z')
 const HEAD = ' ▐▛███▜▌'
 const BODY = '▝▜█████▛▘'
 const LEGS = ['  ▘▘ ▝▝', '  ▝▝ ▘▘'] as const
 const GLYPHS = /[█▐▌▛▜▝▘]/
+/** The quadrants a glyph lights: upper left, upper right, lower left, lower right. */
+const QUADRANTS: Record<string, readonly [boolean, boolean, boolean, boolean]> = {
+  ' ': [false, false, false, false],
+  '█': [true, true, true, true],
+  '▐': [false, true, false, true],
+  '▌': [true, false, true, false],
+  '▛': [true, true, true, false],
+  '▜': [true, true, false, true],
+  '▝': [false, true, false, false],
+  '▘': [true, false, false, false],
+}
+/** The desktop's drawing of three rows, whole: one 4 by 9 rectangle per lit quadrant, 72 by 54, one colour. */
+const sourceOf = (rows: readonly string[]): string => {
+  let rects = ''
+  rows.forEach((r, y) => {
+    Array.from(r).forEach((glyph, x) => {
+      const lit = QUADRANTS[glyph]
+      if (!lit) throw new Error(`no quadrants for ${JSON.stringify(glyph)}`)
+      lit.forEach((on, i) => {
+        if (on) rects += `<rect x="${(x * 2 + (i % 2)) * 4}" y="${(y * 2 + Math.floor(i / 2)) * 9}" width="4" height="9"/>`
+      })
+    })
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 54" width="72" height="54" shape-rendering="crispEdges" fill="#D97757">${rects}</svg>`
+}
+/** The mascot's two drawings in the desktop app, one per leg step, the first frame's first. */
+const POSES = LEGS.map((legs) => sourceOf([HEAD, BODY, legs]))
 const GOAL_LINE = "⚽ ESP 1–0 ARG 36'  · demo"
 const FT_LINE = '⚽ ESP 1–0 ARG FT  · demo'
 
@@ -64,7 +93,7 @@ const svgless = (n: Tree | string | null): Tree | string | null => {
   const { weight: _weight, ...props } = n.props ?? {}
   return { ...n, props, children: (n.children ?? []).map((c) => svgless(c) as Tree | string) }
 }
-const goalWords = (spaces: number): [Tree, Tree, Tree] => [row(`${' '.repeat(spaces)}⚽`), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Spain'), row("Demo scorer 35'")]
+const goalWords = (spaces: number, word = 'GOAL!', team = 'Spain'): [Tree, Tree, Tree] => [row(`${' '.repeat(spaces)}⚽`), row(text({ bold: true, color: 'success' }, word), ` ${team}`), row("Demo scorer 35'")]
 const FT_WORDS: [Tree, Tree, Tree] = [row(' '), row('Full time · Spain win'), row(' ')]
 /** 40 columns: the mascot's nine and one apart leave the ball 30, itself two wide. */
 const SPACES = [0, 5, 11, 16, 22, 28]
@@ -84,6 +113,8 @@ const session = async ($: Engine, on: On) => {
     asked.clears += 1
     return { value: undefined }
   })
+  // A team word sets its stadium as the look: the engine's answer, a look that is drawn.
+  on('theme.set', () => ({ value: { isDrawn: true } }))
   on('ui.render', { component: 'AbovePrompt' }, ($$, e) => {
     const { Text } = $$.ui.resolve(e)
     return <Text>beneath</Text>
@@ -126,18 +157,15 @@ describe('/demo mascot: the goal celebration', () => {
   test('the desktop app draws six frames, each the whole tree with the mascot as one Svg, its two drawings alternating, no block glyph in any text; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('mascot')
-    const sources: string[] = []
     for (let f = 0; f < 6; f++) {
       const d = await s.draw('desktop')
       expect(d.svgs).toHaveLength(1)
       expect(d.svgs[0]?.props.alt).toBe('Claude mascot')
-      sources.push(String(d.svgs[0]?.props.source))
+      expect(d.svgs[0]?.props.source, `frame ${f}`).toBe(POSES[f % 2])
       expect(d.texts.some((t) => GLYPHS.test(t))).toBe(false)
       expect(svgless(d.tree)).toEqual(onDesktop(expected('', goalWords(SPACES[f] as number), GOAL_LINE)))
       await s.clock.advance(500)
     }
-    expect(new Set(sources).size).toBe(2)
-    expect(sources).toEqual([0, 1, 2, 3, 4, 5].map((f) => sources[f % 2]))
     expect(await s.draw('desktop')).toEqual(EMPTY)
   })
 
@@ -165,6 +193,27 @@ describe('/demo mascot: the goal celebration', () => {
   })
 })
 
+describe('the celebration is the chosen team\'s, in the chosen language', () => {
+  test('after `/demo es` the goal word is Spanish\'s, on every frame', { timeoutMs: 20_000 }, async ($, on) => {
+    const s = await session($, on)
+    await s.run('es')
+    await s.run('mascot')
+    for (let f = 0; f < 6; f++) {
+      expect((await s.draw()).tree).toEqual(expected(LEGS[f % 2] as string, goalWords(SPACES[f] as number, '¡GOL!'), GOAL_LINE))
+      await s.clock.advance(500)
+    }
+  })
+
+  test('after `/demo argentina` (the away side) the goal and the line are Argentina\'s, 0–1, and full time is its win', async ($, on) => {
+    const s = await session($, on)
+    await s.run('argentina')
+    expect(await s.run('mascot')).toBe('Argentina, goal celebration: playing in the band (3 s)')
+    expect((await s.draw()).tree).toEqual(expected(LEGS[0], goalWords(0, 'GOAL!', 'Argentina'), "⚽ ESP 0–1 ARG 36'  · demo"))
+    expect(await s.run('fulltime')).toBe('Argentina, full time: playing in the band (5 s)')
+    expect((await s.draw()).tree).toEqual(expected(LEGS[0], [row(' '), row('Full time · Argentina win'), row(' ')], '⚽ ESP 0–1 ARG FT  · demo'))
+  })
+})
+
 describe('/demo fulltime: the full-time celebration', () => {
   test('it answers at once with the team and the play\'s length', async ($, on) => {
     const s = await session($, on)
@@ -174,17 +223,14 @@ describe('/demo fulltime: the full-time celebration', () => {
   test('ten frames, each the whole tree on the terminal (the caption plain between two blank rows, the legs alternating to the end) and in the desktop app (one Svg, its two drawings alternating to the end); then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('fulltime')
-    const sources: string[] = []
     for (let f = 0; f < 10; f++) {
       expect((await s.draw()).tree).toEqual(expected(LEGS[f % 2] as string, FT_WORDS, FT_LINE))
       const desktop = await s.draw('desktop')
       expect(desktop.svgs).toHaveLength(1)
-      sources.push(String(desktop.svgs[0]?.props.source))
+      expect(desktop.svgs[0]?.props.source, `frame ${f}`).toBe(POSES[f % 2])
       expect(svgless(desktop.tree)).toEqual(onDesktop(expected('', FT_WORDS, FT_LINE)))
       await s.clock.advance(500)
     }
-    expect(new Set(sources).size).toBe(2)
-    expect(sources).toEqual(sources.map((_, f) => sources[f % 2]))
     expect(await s.draw()).toEqual(EMPTY)
     expect(await s.draw('desktop')).toEqual(EMPTY)
   })
@@ -224,23 +270,40 @@ describe('a play ends, is replaced or starts again', () => {
     const s = await session($, on)
     await s.run('mascot')
     await s.clock.advance(2_000)
+    const before = s.asked.redraws
     await s.run('fulltime')
+    expect(s.asked.redraws).toBe(before + 1)
     expect((await s.draw()).tree).toEqual(expected(LEGS[0], FT_WORDS, FT_LINE))
-    await s.clock.advance(4_500)
+    // The new play asks for its own frames: one each 500 ms, the first play's timer asking none.
+    for (let f = 1; f < 10; f++) {
+      await s.clock.advance(500)
+      expect(s.asked.redraws, `frame ${f}`).toBe(before + 1 + f)
+    }
     expect((await s.draw()).tree).toEqual(expected(LEGS[1], FT_WORDS, FT_LINE))
     await s.clock.advance(500)
+    expect(s.asked.redraws).toBe(before + 12)
     expect(await s.draw()).toEqual(EMPTY)
+    await s.clock.advance(5_000)
+    expect(s.asked.redraws).toBe(before + 12)
   })
 
   test('the same command again starts the play again from its first frame', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('mascot')
     await s.clock.advance(2_000)
+    const before = s.asked.redraws
     expect(await s.run('mascot')).toBe('Spain, goal celebration: playing in the band (3 s)')
+    expect(s.asked.redraws).toBe(before + 1)
     expect((await s.draw()).tree).toEqual(expected(LEGS[0], goalWords(0), GOAL_LINE))
-    await s.clock.advance(2_500)
+    for (let f = 1; f < 6; f++) {
+      await s.clock.advance(500)
+      expect(s.asked.redraws, `frame ${f}`).toBe(before + 1 + f)
+    }
     expect((await s.draw()).tree).toEqual(expected(LEGS[1], goalWords(28), GOAL_LINE))
     await s.clock.advance(500)
+    expect(s.asked.redraws).toBe(before + 8)
     expect(await s.draw()).toEqual(EMPTY)
+    await s.clock.advance(5_000)
+    expect(s.asked.redraws).toBe(before + 8)
   })
 })

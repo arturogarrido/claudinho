@@ -37,7 +37,7 @@ time, and never writes into one that exists (`bash scripts/plugin-demo.sh <folde
 ## Its tests
 
 `bash scripts/plugin-demo-test.sh` assembles the demo and runs its kit (`packages/plugin-demo-tests`) against it: `/demo mascot`,
-`/demo fulltime` and `/demo off`, frame by frame. CI runs it. It runs no scene command, and it is not a look in the app.
+`/demo fulltime` and `/demo off`, frame by frame. CI runs it. It does not look at the scenes a command sets, and it is not a look in the app.
 
 ## What it does not show
 

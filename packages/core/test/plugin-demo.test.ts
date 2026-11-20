@@ -97,7 +97,7 @@ describe('the plugin demo (development only)', () => {
   it('the demo has a kit that runs it: tests kept out of the demo\'s folder, run against the assembled demo by a script CI runs', () => {
     // packages/plugin-demo-tests, laid out as the demo is: `scripts/plugin-demo-test.sh` assembles the demo with
     // `scripts/plugin-demo.sh` and runs these against it under `claude plugin test`. They run `/demo mascot` and
-    // `/demo fulltime`; the scene commands are not run there.
+    // `/demo fulltime`; the scenes a command sets are not looked at there.
     const kit = tracked('packages/plugin-demo-tests');
     expect(kit.filter((f) => /\.test\.tsx?$/.test(f)).length).toBeGreaterThan(0);
     // No kit file takes the place of a file the assembled demo holds: the demo's own, or a plugin module copied in.
@@ -360,11 +360,13 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     expect(existsSync(second)).toBe(false);
   });
 
-  it('refuses a kit entry that would replace a file of the assembled demo, a link as much as a file, before any test runs', () => {
+  it('refuses a kit entry that would replace a file of the assembled demo, a link or a folder as much as a file, before any test runs', () => {
     for (const make of [
       (kit: string) => writeFileSync(join(kit, 'hooks/register.tsx'), 'export const register = () => {}\n'),
       (kit: string) => symlinkSync(join(kit, 'hooks/demo.test.tsx'), join(kit, 'hooks/register.tsx')),
       (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/celebration.tsx')),
+      // A kit folder where the assembled demo holds a file.
+      (kit: string) => mkdirSync(join(kit, 'hooks/register.tsx')),
     ]) {
       const s = stage();
       make(s.kit);

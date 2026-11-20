@@ -42,8 +42,8 @@ const expected = (legs: string, words: [Tree, Tree, Tree], line: string): Tree =
 type W = Awaited<ReturnType<typeof world>>
 type Surface = 'terminal' | 'desktop'
 /** The plugin's part of the band as drawn now. */
-const drawn = async (w: W, surface: Surface = 'terminal'): Promise<Tree | string> => {
-  const m = await w.mount({ bodyColumns: 40 }, surface)
+const drawn = async (w: W, surface: Surface = 'terminal', bodyColumns = 40): Promise<Tree | string> => {
+  const m = await w.mount({ bodyColumns }, surface)
   const [root] = await m.findAll({ type: 'Box' })
   const part = ((root?.children ?? []) as Array<{ part?: { plugin?: string } }>).find((c) => c?.part?.plugin === 'claudinho')
   return shape(part)
@@ -73,6 +73,15 @@ describe('the whole tree on the terminal', () => {
     for (let f = 0; f < 6; f++) {
       const words: [Tree, Tree, Tree] = [row(`${' '.repeat(SPACES[f] as number)}⚽`), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Liverpool'), row("Ronald Araújo 22'")]
       expect(await drawn(w)).toEqual(expected(LEGS[f % 2] as string, words, momentLine([0, 1])))
+      await w.clock.advance(500)
+    }
+  })
+
+  test('a band too narrow for the ball to move (10 columns): the whole tree on all six frames, the ball at the start of its row', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await goalWorld($, on)
+    for (let f = 0; f < 6; f++) {
+      const words: [Tree, Tree, Tree] = [row('⚽'), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Liverpool'), row("Ronald Araújo 22'")]
+      expect(await drawn(w, 'terminal', 10), `frame ${f}`).toEqual(expected(LEGS[f % 2] as string, words, momentLine([0, 1])))
       await w.clock.advance(500)
     }
   })
