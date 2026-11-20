@@ -16,7 +16,7 @@ import type {
   ClaudinhoPlay,
   ClaudinhoTally,
 } from '../types'
-import { celebrationBall, celebrationRow, goalRow } from './celebration'
+import { FRAME_MS, FULLTIME_MS, GOAL_FRAMES, celebrationBall, celebrationRow, goalRow, resultRow } from './celebration'
 import { bandSvg, buildLook, colorsForPick, flagForPick } from './team-look'
 import type { TeamColors } from './team-look'
 import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
@@ -129,8 +129,9 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * the generation on and drops the value, the binding and the timers. The binding and the timers are this module load's:
  * after a reload the pane stays drawn from its value and is re-read again from the next `/claudinho match`.
  *
- * The goal celebration (its mascot, ball and goal row drawn by `./celebration`, a pure module the plugin's demo plays
- * too): when a run's toasts include a goal, the band plays it above its line in at most
+ * The goal celebration (its mascot, ball, goal row and full time's row drawn by `./celebration`, a pure module the
+ * plugin's demo plays too, and its lengths, the 3 and 5 seconds below, written there): when a run's toasts include a
+ * goal, the band plays it above its line in at most
  * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a
  * regulation or shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL"
  * banner growing, then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with
@@ -280,21 +281,19 @@ const CONTEXT_MAX_AGE_MS = 2 * LIVE_MS
 /** The band's width before any draw. */
 const DEFAULT_COLUMNS = 80
 /**
- * A celebration frame's length; six frames are a goal's whole length (full time's: `FULLTIME_MS`), then it is spent.
- * The ball of `./celebration` crosses its row in as many frames (its own `FRAMES`).
+ * A goal's play: `GOAL_FRAMES` frames of `FRAME_MS`, then it is spent; full time's play is `FULLTIME_MS` on screen.
+ * The three lengths are `./celebration`'s, the ones the plugin's demo plays too, and its ball crosses its row in a
+ * goal's frames.
  */
-const FRAME_MS = 500
-const FRAMES = 6
-const PLAY_MS = FRAMES * FRAME_MS
+const PLAY_MS = GOAL_FRAMES * FRAME_MS
 /** A celebration not on screen this long after its goal is dropped (the toast already said it). */
 const CELEBRATION_MAX_AGE_MS = 60_000
 /** The legacy banner (CLI 0.11.2), English: `G`, `GO`, `GOA`, `GOAL`, `GOAL!`, `GOAL!` frame by frame. */
 const BANNER = 'GOAL!'
-/** Full time's play, for the pinned side's win or draw: 5 s on screen. */
-const FULLTIME_MS = 5_000
 /**
  * The goal word's theme key, which the pane's accent and flair are drawn in too. The celebration itself (Anthropic's
- * Claude mascot, the ball, the goal's row) is drawn by `./celebration`, the one module the plugin's demo shares.
+ * Claude mascot, the ball, the goal's row and full time's) and its lengths are `./celebration`'s, a module the plugin's
+ * demo shares, as it shares the team colors, the look and the scenes.
  */
 const GOAL_COLOR = 'success'
 /** The band's `lineParts` read, at most. */
@@ -671,7 +670,7 @@ async function resumeTicker($: EngineInterface): Promise<void> {
  * across all `cols` columns (no mascot beside it).
  */
 function celebrationRows(frame: number, rows: number, text: string, cols: number): string[] {
-  const last = frame === FRAMES - 1
+  const last = frame === GOAL_FRAMES - 1
   const banner = BANNER.slice(0, Math.min(frame + 1, BANNER.length))
   if (rows >= 3) return last ? [celebrationBall(frame, cols, 0), banner, text] : [celebrationBall(frame, cols, 0), banner]
   if (rows === 2) return [celebrationBall(frame, cols, 0), last ? text : banner]
@@ -2973,7 +2972,7 @@ export const register: Register = (on, options) => {
       t -= playLength(p)
     }
     const step = Math.floor(t / FRAME_MS)
-    const frame = Math.min(FRAMES - 1, step)
+    const frame = Math.min(GOAL_FRAMES - 1, step)
     if (play.kind === 'goal' || play.kind === 'fulltime') {
       // The goal moments (a record that carries `names`): the mascot in three rows, else the words alone, drawn by
       // `./celebration`, the one drawing the plugin's demo plays too. The goal word is the one the play was built with,
@@ -2999,11 +2998,7 @@ export const register: Register = (on, options) => {
         top = celebrationBall(frame, columns)
         bottom = play.detail === '' ? ' ' : play.detail
       } else {
-        middle = (
-          <Text key="row-1" wrap="truncate-end">
-            {`${play.heading} · ${play.result}`}
-          </Text>
-        )
+        middle = resultRow(elements, `${play.heading} · ${play.result}`)
         if (rows < 3) return withLine([middle])
         top = ' '
         bottom = ' '

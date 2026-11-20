@@ -1,6 +1,6 @@
 import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-code'
 
-import { celebrationBall, celebrationRow, goalRow } from './celebration'
+import { FRAME_MS, FULLTIME_MS, GOAL_FRAMES, celebrationBall, celebrationRow, goalRow, resultRow } from './celebration'
 import { FLAG_COLORS, TEAM_COLORS } from './team-colors'
 import { bandSvg, buildLook } from './team-look'
 import { pitchSvg, pixelSvg } from './team-scenes'
@@ -11,8 +11,8 @@ import { pitchSvg, pixelSvg } from './team-scenes'
  * plugin's `team-scenes.ts`, `team-look.ts`, `team-colors.ts` (and the color builder) and `celebration.tsx` beside this
  * module, so what this draws is what the plugin on that checkout draws. It sets a scene the way the plugin does
  * (`$.theme.set`, the same glass, one `Svg`), and plays the goal and full-time celebration in the band above the prompt
- * with the plugin's own `celebrationRow`, `celebrationBall` and `goalRow`; it runs none of the plugin's hooks, reads no
- * score and runs no CLI.
+ * with the plugin's own `celebrationRow`, `celebrationBall`, `goalRow` and `resultRow`, for the plugin's own lengths
+ * (`FRAME_MS`, `GOAL_FRAMES`, `FULLTIME_MS`); it runs none of the plugin's hooks, reads no score and runs no CLI.
  *
  *   /demo <team>     spain, mexico, pumas, arsenal, argentina, italy: that team's stadium, live
  *   /demo band       the band of the team's two colors across the top (the plugin's default scene)
@@ -57,9 +57,10 @@ const TEAMS: Record<string, Team> = {
 }
 type What = 'pitch' | 'idle' | 'live' | 'goal' | 'other'
 
-/** A celebration frame's length, as the plugin plays it; a goal's is 6 frames (3 s), full time's 10 (5 s). */
-const FRAME_MS = 500
-const CELEBRATION_FRAMES = { mascot: 6, fulltime: 10 } as const
+/** A celebration's kind: the goal's (`mascot`) or full time's. */
+type Kind = 'mascot' | 'fulltime'
+/** A play's frames, as the plugin plays it: a goal's `GOAL_FRAMES`, full time's `FULLTIME_MS` in frames. */
+const framesOf = (kind: Kind): number => (kind === 'mascot' ? GOAL_FRAMES : FULLTIME_MS / FRAME_MS)
 /** The goal's bottom row: a demo scorer and minute, where the plugin writes the scorer the CLI named. */
 const DEMO_DETAIL = "Demo scorer 35'"
 /** The band's width when the draw states none. */
@@ -68,7 +69,7 @@ const DEFAULT_COLUMNS = 80
  * The celebration playing in the band: its kind, the clock's milliseconds it started at, its frames, the team and the
  * goal word it was asked with, and its redraw timer. Replaced by the next `mascot` or `fulltime`, ended by `off`.
  */
-type Play = { kind: keyof typeof CELEBRATION_FRAMES; from: number; frames: number; team: Team; word: string; timer: Timer | null }
+type Play = { kind: Kind; from: number; frames: number; team: Team; word: string; timer: Timer | null }
 
 let team: Team = TEAMS.spain as Team
 let serial = 0
@@ -93,7 +94,7 @@ function endPlay(): void {
 async function startPlay($: EngineInterface, kind: Play['kind']): Promise<void> {
   const from = await $.clock.now()
   endPlay()
-  const play: Play = { kind, from, frames: CELEBRATION_FRAMES[kind], team, word: WORDS[lang] ?? 'GOAL!', timer: null }
+  const play: Play = { kind, from, frames: framesOf(kind), team, word: WORDS[lang] ?? 'GOAL!', timer: null }
   playing = play
   play.timer = $.clock.every(FRAME_MS, () => {
     $.ui.invalidate('ui.render')
@@ -182,7 +183,7 @@ export const register: Register = (on) => {
       // the play runs on by itself.
       await startPlay($, word)
       const what = word === 'mascot' ? 'goal celebration' : 'full time'
-      return { text: `${team.name}, ${what}: playing in the band (${(CELEBRATION_FRAMES[word] * FRAME_MS) / 1000} s)` }
+      return { text: `${team.name}, ${what}: playing in the band (${(framesOf(word) * FRAME_MS) / 1000} s)` }
     }
     if (word === 'band') {
       // The plugin's default scene: the look as `buildLook` makes it, its band drawn from the scene's own name.
@@ -244,11 +245,7 @@ export const register: Register = (on) => {
       line = `⚽ ${shown.home} ${score} ${shown.away} 36'  · demo`
     } else {
       top = ' '
-      middle = (
-        <Text key="row-1" wrap="truncate-end">
-          {`Full time · ${shown.name} win`}
-        </Text>
-      )
+      middle = resultRow(elements, `Full time · ${shown.name} win`)
       bottom = ' '
       line = `⚽ ${shown.home} ${score} ${shown.away} FT  · demo`
     }

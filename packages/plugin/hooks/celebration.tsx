@@ -2,15 +2,20 @@ import type { BoxProps, ElementConstructor, RenderChildren, RenderElement, Rende
 
 /**
  * The goal and full-time celebration's drawing: Anthropic's Claude mascot (in these two celebrations only) at the left
- * of the celebration's three rows, the ball that crosses the top row, and the goal's middle row. Pure: each function is
- * handed the surface's elements (the table the caller's render hook resolved) and the rows' values, and draws; it reads
- * no host, no state and no clock. The plugin's hooks module draws the band's celebration with these functions, and the
- * plugin's demo (`packages/plugin-demo`, assembled by `scripts/plugin-demo.sh`) plays it with the same ones, so what
- * the demo shows in the app is what the plugin draws.
+ * of the celebration's three rows, the ball that crosses the top row, the goal's middle row and full time's, and the
+ * celebration's lengths. Pure: each function is handed the surface's elements (the table the caller's render hook
+ * resolved) and the rows' values, and draws; it reads no host, no state and no clock. The plugin's hooks module draws
+ * the band's celebration with these functions and plays it for these lengths, and the plugin's demo
+ * (`packages/plugin-demo`, assembled by `scripts/plugin-demo.sh`) plays it with the same ones, so what the demo shows in
+ * the app is what the plugin draws.
  */
 
-/** A goal's frames, 500 ms each: the ball crosses the top row in them (the hooks module's `FRAMES`, a goal's play). */
-const FRAMES = 6
+/** A celebration frame's length, in milliseconds: the mascot's legs step, and the ball moves, once a frame. */
+export const FRAME_MS = 500
+/** A goal's frames, its whole length (3 s): the ball crosses the top row in them. */
+export const GOAL_FRAMES = 6
+/** Full time's length on screen, in milliseconds (the pinned side's win or draw). */
+export const FULLTIME_MS = 5_000
 /** The ball's display width (an emoji takes two columns). */
 const BALL_COLUMNS = 2
 /**
@@ -82,7 +87,7 @@ export type CelebrationElements = {
   Svg?: ElementConstructor<SvgProps>
 }
 
-/** The three rows beside the mascot: the top and the bottom as text, the middle as the caller drew it (`goalRow`, or full time's words). */
+/** The three rows beside the mascot: the top and the bottom as text, the middle as the caller drew it (`goalRow`, or full time's `resultRow`). */
 export type CelebrationRows = { top: string; middle: RenderChildren; bottom: string }
 
 /**
@@ -123,7 +128,7 @@ export const celebrationRow = (elements: CelebrationElements, surface: RenderSur
  */
 export const celebrationBall = (frame: number, columns: number, left: number = MASCOT_COLUMNS + MASCOT_GAP): string => {
   const room = Math.max(0, Math.max(0, columns - left) - BALL_COLUMNS)
-  return `${' '.repeat(Math.floor((frame * room) / (FRAMES - 1)))}⚽`
+  return `${' '.repeat(Math.floor((frame * room) / (GOAL_FRAMES - 1)))}⚽`
 }
 
 /**
@@ -139,6 +144,19 @@ export const goalRow = (elements: Pick<CelebrationElements, 'Text'>, word: strin
         {word}
       </Text>
       {` ${team}`}
+    </Text>
+  )
+}
+
+/**
+ * Full time's middle row: its words (`<heading> · <result>`, as the caller wrote them), plain. `key` is the row's place
+ * in the band, `row-1` (the middle row beside the mascot) by default.
+ */
+export const resultRow = (elements: Pick<CelebrationElements, 'Text'>, text: string, key = 'row-1'): RenderElement => {
+  const { Text } = elements
+  return (
+    <Text key={key} wrap="truncate-end">
+      {text}
     </Text>
   )
 }
