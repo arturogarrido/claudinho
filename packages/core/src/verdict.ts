@@ -49,8 +49,8 @@
  * NOT verdicts: an answer's own empty sentences ("no fixture for X within the
  * next 14 days", "not found between A and B", and after a read that was not
  * whole "no match in play was read", "no fixture was read for D"), and a
- * day's attribution on such a read. They are the body's text, from the card
- * builders, with their span as a plain field (`horizon`, `window`); they never
+ * day's attribution on such a read. They are the body's text, from
+ * `bodyText.ts`, with their span as a plain field (`horizon`, `window`); they never
  * suppress a qualifier, and a verdict replaces them.
  */
 import { t } from './i18n';
