@@ -29,7 +29,7 @@ import {
 import { marketAttributionText } from '../src/markets/format';
 
 // No betting or advice language in market copy (the Hard constraint's words, and their common forms).
-const BANNED = /\b(bet|betting|wager|gambling|edge|lock|value pick)\b/i;
+const BANNED = /\b(bet|betting|wager|gambling|value|edge|lock)\b/i;
 import { cacheableKeys, resolvedValues } from '../src/trust';
 import type { BatchResolution } from '../src/trust';
 /** The old {signals, checked} view, so these assertions keep their meaning. */

@@ -28,6 +28,7 @@ import {
   DISCLAIMER,
   nextHorizonSentence,
   nextNoneReadSentence,
+  t,
   verdictNotice,
   verdictQualifiers,
 } from '../src';
@@ -274,7 +275,7 @@ describe('the club render: its decisions, offline', () => {
  * own sentence builders handed in. One case per row of its table, in its order.
  */
 describe('the club answer: what next answered, and whether its text says so', () => {
-  const CORE = { verdictNotice, verdictQualifiers, nextHorizonSentence, nextNoneReadSentence };
+  const CORE = { verdictNotice, verdictQualifiers, nextHorizonSentence, nextNoneReadSentence, t };
   const ARS = { id: 'espn:359', code: 'ARS', name: 'Arsenal' };
   const CHE = { id: 'espn:363', code: 'CHE', name: 'Chelsea' };
   const FIXTURE = { id: '800000011', stage: 'REGULAR', kickoff: '2026-10-10T14:00:00.000Z', venue: 'Emirates Stadium', home: ARS, away: CHE, status: 'SCHEDULED', updatedAt: '2026-10-04T12:00:00.000Z' };
@@ -344,8 +345,13 @@ describe('the club answer: what next answered, and whether its text says so', ()
     expect(verdict(answer(between), text('No upcoming fixture found for Arsenal.'))).toEqual({ kind: 'fail', detail: 'betweenEditions is not said in the text' });
   });
 
-  it('an outage is reported as one', () => {
-    expect(verdict(answer({ team: 'Arsenal', degraded: true }), text("Couldn't reach the data provider."))).toEqual({ kind: 'outage', detail: 'the provider could not be reached' });
+  it('an outage is reported as one when the text says so, and a failed render when it says anything else', () => {
+    const outage = answer({ team: 'Arsenal', degraded: true });
+    expect(verdict(outage, text(t('en', 'live.degraded')))).toEqual({ kind: 'outage', detail: 'the provider could not be reached' });
+    for (const shown of ["Couldn't reach the data provider.", said({ unknownTeam: true }).notice, 'Arsenal vs Chelsea']) {
+      expect(shown).not.toBe('');
+      expect(verdict(outage, text(shown)), shown).toEqual({ kind: 'fail', detail: 'the outage is not said in the text' });
+    }
   });
 
   it('a fixture: both clubs must be named on one line of the text, and a read that was not whole must say so there', () => {
@@ -366,6 +372,15 @@ describe('the club answer: what next answered, and whether its text says so', ()
     expect(qualifiers.length).toBeGreaterThan(0);
     expect(verdict(answer(partial), text(...qualifiers, 'Arsenal vs Chelsea'))).toEqual({ kind: 'ok', detail: 'a fixture, the read was not whole and the text says so' });
     expect(verdict(answer(partial), text('Arsenal vs Chelsea'))).toEqual({ kind: 'fail', detail: 'the partial read is not said in the text' });
+    // The other direction: a text that says its read was not whole, beside an answer that says it was.
+    for (const p of [{}, { omitted: 1 }, { omitted: 2 }, { omitted: 37 }]) {
+      const shown = said({ fixture: FIXTURE, partial: p }).qualifiers;
+      expect(shown.length, JSON.stringify(p)).toBeGreaterThan(0);
+      expect(verdict(answer(fixture), text(...shown, 'Arsenal vs Chelsea')), JSON.stringify(p)).toEqual({
+        kind: 'fail',
+        detail: 'the text says the read was not whole and the answer does not',
+      });
+    }
   });
 
   it('no fixture READ in a span that was not whole: the none-read sentence and every qualifier must be in the text', () => {
