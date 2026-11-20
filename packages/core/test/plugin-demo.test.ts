@@ -51,8 +51,12 @@ describe('the plugin demo (development only)', () => {
     const list = copies();
     for (const f of list) expect(existsSync(join(ROOT, 'packages/plugin/hooks', f)), f).toBe(true);
     // A module's file: `.js` as written, else the `.ts` or the `.tsx` the plugin holds under that name.
-    const importsOf = (text: string) =>
-      [...text.matchAll(/from '\.\/([a-z-]+)(\.js)?'/g)].map((m) => (m[2] === '.js' ? `${m[1]}.js` : existsSync(join(ROOT, 'packages/plugin/hooks', `${m[1]}.tsx`)) ? `${m[1]}.tsx` : `${m[1]}.ts`));
+    // Either quote is read, and an import of a relative path this pattern does not read fails the case (closed).
+    const importsOf = (text: string) => {
+      const found = [...text.matchAll(/\bfrom\s*(['"])\.\/([a-z-]+)(\.js)?\1/g)];
+      expect(found.length).toBe((text.match(/\bfrom\s*['"]\.\.?\//g) ?? []).length);
+      return found.map((m) => (m[3] === '.js' ? `${m[2]}.js` : existsSync(join(ROOT, 'packages/plugin/hooks', `${m[2]}.tsx`)) ? `${m[2]}.tsx` : `${m[2]}.ts`));
+    };
     const needed = new Set<string>();
     const queue = importsOf(read('packages/plugin-demo/hooks/register.tsx'));
     expect(queue.length).toBeGreaterThan(0);
@@ -69,18 +73,24 @@ describe('the plugin demo (development only)', () => {
     expect(list).toContain('celebration.tsx');
   });
 
-  it('the demo plays the celebration with the plugin\'s own drawing: the row, the ball and the goal row are imported, and no mascot is written here', () => {
+  it('the demo plays the celebration with the plugin\'s own drawing: the rows, the ball and the lengths are imported, and no mascot, row or length is written here', () => {
     const src = read('packages/plugin-demo/hooks/register.tsx');
+    const SHARED = ['FRAME_MS', 'FULLTIME_MS', 'GOAL_FRAMES', 'celebrationBall', 'celebrationRow', 'goalRow', 'resultRow'];
     const imported = (/import \{([^}]*)\} from '\.\/celebration'/.exec(src)?.[1] ?? '').split(',').map((n) => n.trim()).filter(Boolean);
-    expect(imported.sort()).toEqual(['celebrationBall', 'celebrationRow', 'goalRow']);
-    for (const fn of ['celebrationRow', 'celebrationBall', 'goalRow']) expect(src, fn).not.toMatch(new RegExp(`(function|const|let|var)\\s+${fn}\\b`));
+    expect(imported.sort()).toEqual(SHARED);
+    for (const name of SHARED) expect(src, name).not.toMatch(new RegExp(`(function|const|let|var)\\s+${name}\\b`));
     expect(src).not.toMatch(/[\u2588\u2590\u258c\u259b\u259c\u259d\u2598]/);
-    // It is drawn where the plugin draws it, in the band above the prompt, on its two commands.
+    // No row of its own beside the mascot (full time's words go through `resultRow`), and no length of its own: a
+    // play's frames come from the plugin's three constants.
+    expect(src).not.toContain('key="row-1"');
+    expect(src).not.toMatch(/\b[A-Z_]*FRAMES?(?:_MS)?\b\s*(?:=|:)\s*(?:\{[^}]*\d|\d)/);
+    expect(src).toContain('resultRow(');
+    // It is drawn where the plugin draws it, in the band above the prompt.
     expect(src).toMatch(/on\(\s*'ui\.render'\s*,\s*\{\s*component:\s*'AbovePrompt'\s*\}/);
-    for (const word of ['mascot', 'fulltime']) {
-      expect(src, word).toContain(`'${word}'`);
-      expect(read('packages/plugin-demo/README.md'), word).toContain(`\`/demo ${word}\``);
-    }
+    // Its two command words reach the play: the one branch that compares both starts it. This reads the source; that
+    // a command PLAYS in the app is a person's look (the PR's "Seen in the app"), which no test here replaces.
+    expect(src).toMatch(/if \(word === 'mascot' \|\| word === 'fulltime'\) \{[^}]*?\bawait startPlay\(\$, word\)/);
+    for (const word of ['mascot', 'fulltime']) expect(read('packages/plugin-demo/README.md'), word).toContain(`\`/demo ${word}\``);
     // The command list of AGENTS.md says the demo shows it.
     const bullet = /- `bash scripts\/plugin-demo\.sh`[^\n]*/.exec(read('AGENTS.md'))?.[0] ?? '';
     expect(bullet).toMatch(/celebration/);

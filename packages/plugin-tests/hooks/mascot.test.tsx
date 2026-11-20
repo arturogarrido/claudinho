@@ -82,6 +82,20 @@ describe('a goal for the pinned side, three spare rows', () => {
     }
   })
 
+  test('the ball starts one column after the mascot and ends at the band\'s right edge: 40 columns, the spaces before it frame by frame', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await next(w)
+    // The mascot is nine columns and one apart: the ball has the 30 after them, itself two wide.
+    const SPACES = [0, 5, 11, 16, 22, 28]
+    for (let f = 0; f < 6; f++) {
+      const t = await texts(await w.mount({ bodyColumns: 40 }))
+      const ball = t.map((x) => x.text).filter((x) => /^ *⚽ *$/.test(x))
+      expect(ball).toHaveLength(1)
+      expect(ball[0]?.indexOf('⚽')).toBe(SPACES[f])
+      await w.clock.advance(500)
+    }
+  })
+
   test('about 3 s, then the band is its one line again', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [before, goal, goal])
     await next(w)
