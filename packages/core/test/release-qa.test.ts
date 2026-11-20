@@ -380,6 +380,14 @@ describe('the club answer: what next answered, and whether its text says so', ()
         kind: 'fail',
         detail: 'the text says the read was not whole and the answer does not',
       });
+      // The sentence as a club's NAME, on the fixture's row, is a name: only a line of its own is the qualifier.
+      const name = shown[0] as string;
+      const named = { fixture: { ...FIXTURE, away: { ...CHE, name } } };
+      expect(verdict(answer(named), text(`Arsenal vs ${name}`, 'Oct 10 · 14:00 UTC')), name).toEqual({ kind: 'ok', detail: 'a fixture' });
+      expect(verdict(answer(named), text(name, `Arsenal vs ${name}`)), name).toEqual({
+        kind: 'fail',
+        detail: 'the text says the read was not whole and the answer does not',
+      });
     }
   });
 
