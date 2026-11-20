@@ -9,7 +9,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
  * by frame; the desktop's Svg, by its whole source, frame by frame; the redraws the play asks the engine for, one a frame and
  * none after it; the band empty again after the play's length), a play replaced by the next one or started again, and
  * `/demo off` (the play ended, the look's clear asked); and the celebration after a language word (`es`) and after a
- * team word (`argentina`, the away side). Not looked at here: the scenes a command sets as the look (a team's stadium,
+ * team word (`argentina`, the away side), before a play and during one. Not looked at here: the scenes a command sets as the look (a team's stadium,
  * `band`, `pitch`, `idle`, `live`, `goal`, `other`, `left`, `right`), whose drawings the plugin's own kit pins
  * (scenes.test.tsx); and what the app paints, which is a person's look. Unless a case says otherwise the team is the
  * demo's first, Spain, at home to Argentina, and the word is English's.
@@ -211,6 +211,32 @@ describe('the celebration is the chosen team\'s, in the chosen language', () => 
     expect((await s.draw()).tree).toEqual(expected(LEGS[0], goalWords(0, 'GOAL!', 'Argentina'), "⚽ ESP 0–1 ARG 36'  · demo"))
     expect(await s.run('fulltime')).toBe('Argentina, full time: playing in the band (5 s)')
     expect((await s.draw()).tree).toEqual(expected(LEGS[0], [row(' '), row('Full time · Argentina win'), row(' ')], '⚽ ESP 0–1 ARG FT  · demo'))
+  })
+})
+
+describe('a play keeps the team and the word it was asked with', () => {
+  test('a team word and a language word typed during a goal\'s play change nothing of it: the third frame is still Spain\'s, in English, 1–0', { timeoutMs: 20_000 }, async ($, on) => {
+    const s = await session($, on)
+    await s.run('mascot')
+    await s.clock.advance(1_000)
+    await s.run('argentina')
+    await s.run('es')
+    for (let f = 2; f < 6; f++) {
+      expect((await s.draw()).tree, `frame ${f}`).toEqual(expected(LEGS[f % 2] as string, goalWords(SPACES[f] as number), GOAL_LINE))
+      await s.clock.advance(500)
+    }
+    expect(await s.draw()).toEqual(EMPTY)
+    // The next play is the new team's, in the new language.
+    await s.run('mascot')
+    expect((await s.draw()).tree).toEqual(expected(LEGS[0], goalWords(0, '¡GOL!', 'Argentina'), "⚽ ESP 0–1 ARG 36'  · demo"))
+  })
+
+  test('the same during full time: the caption and the line stay Spain\'s', async ($, on) => {
+    const s = await session($, on)
+    await s.run('fulltime')
+    await s.clock.advance(1_000)
+    await s.run('argentina')
+    expect((await s.draw()).tree).toEqual(expected(LEGS[0], FT_WORDS, FT_LINE))
   })
 })
 
