@@ -14,6 +14,7 @@ export interface NextSentences {
   verdictQualifiers: (result: never, lang?: string) => string[];
   nextHorizonSentence: (result: never, fallback: string, lang: string | undefined) => string | undefined;
   nextNoneReadSentence: (result: never, fallback: string, lang: string | undefined) => string | undefined;
+  t: (lang: string | undefined, key: never, vars?: Record<string, string>) => string;
 }
 export function clubNextVerdict(
   nextJson: string,
