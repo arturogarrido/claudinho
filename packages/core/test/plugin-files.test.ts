@@ -33,6 +33,7 @@ describe('the plugin folder', () => {
       '.claude-plugin/icon.png',
       '.claude-plugin/plugin.json',
       'README.md',
+      'hooks/celebration.tsx',
       'hooks/hooks.json',
       'hooks/make-colors.d.ts',
       'hooks/make-colors.js',
@@ -69,9 +70,9 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the desktop mascot\'s release, 0.12.1', () => {
+  it('the manifest is the release that shares the celebration\'s drawing with the demo, 0.12.2', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.12.1');
+    expect(m.version).toBe('0.12.2');
   });
 
   it('the teamTheme option: off or on, OFF by default (a session holds one theme, and ours would replace the person\'s), and its description says where it shows and what it replaces', () => {
@@ -115,6 +116,38 @@ describe('the plugin folder', () => {
     const stated = /^\/\/ body-sha256: ([0-9a-f]{64})$/m.exec(engine)?.[1];
     expect(stated, 'the body hash the engine wrote in the header').toBeDefined();
     expect(createHash('sha256').update(engine.split('\n').slice(4).join('\n')).digest('hex')).toBe(stated);
+  });
+
+  it('the celebration\'s drawing is one pure module the hooks module and the demo both import: the mascot is written there and nowhere else', () => {
+    const cel = readFileSync(join(ROOT, 'packages/plugin/hooks/celebration.tsx'), 'utf8');
+    // Pure: it is handed the surface's elements and draws; it names no host, no network, no file.
+    expect(cel).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\brequire\s*\(|\bimport\s*\(|\bglobalThis\b/);
+    expect(cel).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
+    expect(cel).not.toMatch(/\$\s*\??\.\s*[A-Za-z_]/);
+    // Types alone are imported, each in an `import type` line (an inline `import { type X }` is refused too): the
+    // host's module also exports its state helpers as values, and this module holds no state.
+    const froms = [...cel.matchAll(/^import\s+type\s+\{[^}]*\}\s+from\s+'([^']+)'/gm)].map((m) => m[1]);
+    expect(froms.length).toBe((cel.match(/^\s*import\b/gm) ?? []).length);
+    expect(froms.filter((f) => f !== 'claude-code')).toEqual([]);
+    // No clock, no timer, no chance, and no binding of the module that can be assigned again. A tripwire over these
+    // spellings, not a proof: a `const` object changed in place passes it, and nothing here or in the kit draws the
+    // same frame twice to compare the two.
+    expect(cel).not.toMatch(/\bDate\b|\bperformance\b|\bMath\s*\.\s*random\b|\bsetTimeout\b|\bsetInterval\b|\bqueueMicrotask\b/);
+    expect(cel).not.toMatch(/^(?:export\s+)?(?:let|var)\s/m);
+    for (const name of ['celebrationRow', 'celebrationBall', 'goalRow', 'resultRow', 'FRAME_MS', 'GOAL_FRAMES', 'FULLTIME_MS']) expect(cel, name).toMatch(new RegExp(`^export const ${name}\\b`, 'm'));
+    // The lengths are written once: a frame is 500 ms, a goal six frames, full time 5 s; the hooks module states none.
+    expect(cel).toMatch(/^export const FRAME_MS = 500$/m);
+    expect(cel).toMatch(/^export const GOAL_FRAMES = 6$/m);
+    expect(cel).toMatch(/^export const FULLTIME_MS = 5_000$/m);
+    expect(cel.match(/\b(?:FRAMES|GOAL_FRAMES|FRAME_MS|FULLTIME_MS)\s*=\s*\d/g) ?? []).toHaveLength(3);
+    // The mascot's glyphs and its rectangles are written in that module alone.
+    const GLYPHS = /[\u2588\u2590\u258c\u259b\u259c\u259d\u2598]/;
+    expect(cel).toMatch(GLYPHS);
+    expect(cel).toContain('<rect');
+    const hooks = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
+    expect(hooks).not.toMatch(GLYPHS);
+    expect(hooks).not.toContain('<rect');
+    expect(hooks).not.toMatch(/\b(?:FRAMES|GOAL_FRAMES|FRAME_MS|FULLTIME_MS)\s*=\s*\d/);
   });
 
   it('the toasts option says what a session with no pin gets: its first goal, then one hint on how to pin', () => {
@@ -210,7 +243,7 @@ describe('the plugin directory listing', () => {
    * installed `claudinho` CLI run. A vocabulary check over the one module the manifest runs, in which the host is
    * always `$` (every hook's first parameter, every binding typed `EngineInterface`): every member of `$` it names is
    * one the policy accounts for; `$` is never indexed or assigned; the module imports nothing but types, the host's
-   * three state helpers and the team look's four pure functions and the scenes' three; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
+   * three state helpers, the team look's four pure functions, the scenes' three and the celebration's four with its three lengths; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
    * version folder listed and `<version>/bin/claudinho` probed; the prompt handler uses its event only to pass it on
    * and to add the note, written from the CLI's `context` unchanged; the command handler reads the typed text only
    * to compare it with `match` and the three team-look phrases. It is a tripwire over the shapes the module has, not a proof: a use of the host or of
@@ -242,9 +275,9 @@ describe('the plugin directory listing', () => {
     expect(src).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
     const imports = [...src.matchAll(/^import\s+(type\s+)?\{([^}]*)\}\s+from\s+'([^']+)'/gm)];
     expect(imports.length).toBe((src.match(/^\s*import\b/gm) ?? []).length);
-    expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look' && m[3] !== './team-scenes').map((m) => m[3])).toEqual([]);
+    expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look' && m[3] !== './team-scenes' && m[3] !== './celebration').map((m) => m[3])).toEqual([]);
     const values = imports.filter((m) => !m[1]).flatMap((m) => (m[2] ?? '').split(',').map((v) => v.trim()));
-    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'bandSvg', 'boardCode', 'buildLook', 'colorsForPick', 'flagForPick', 'pitchSvg', 'pixelSvg', 'read', 'update']);
+    expect(values.filter((v) => v !== '').sort()).toEqual(['FRAME_MS', 'FULLTIME_MS', 'GOAL_FRAMES', 'atom', 'bandSvg', 'boardCode', 'buildLook', 'celebrationBall', 'celebrationRow', 'colorsForPick', 'flagForPick', 'goalRow', 'pitchSvg', 'pixelSvg', 'read', 'resultRow', 'update']);
     const argv = String.raw`\s*\[\s*(['"][^'"]*['"])\s*,\s*(['"][^'"]*['"])`;
     const runs = [...src.matchAll(new RegExp(String.raw`\$${DOT}process${DOT}run${OPEN}${argv}`, 'g'))];
     expect(runs.length).toBe((src.match(new RegExp(String.raw`\$${DOT}process${DOT}run\b`, 'g')) ?? []).length);

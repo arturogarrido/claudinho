@@ -78,6 +78,14 @@ describe('a goal plays', () => {
     expect(last).toBe(38) // frame 5: the ball at the band's right edge (40 columns, the ball two wide)
   })
 
+  test('two spare rows: the ball crosses the whole band too (no mascot beside it), at the right edge on the last frame', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await seeGoal(w)
+    await w.clock.advance(2_500)
+    const r = await rows(w, { bodyColumns: 40, maxRows: 4 })
+    expect(r).toEqual([`${' '.repeat(38)}⚽`, TOAST, bandLine(2, 0)])
+  })
+
   test('a shootout tally that rises plays too', async ($, on) => {
     const pens = (h: number) => live([match('1', [1, 1], { shootout: { home: h, away: 0 }, line: `Arsenal 1–1 Chelsea (pens ${h}–0)` })])
     const w = await world($, on, [pens(1), pens(2), pens(2)])

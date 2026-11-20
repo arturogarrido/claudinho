@@ -2,7 +2,8 @@
 # The Claude Code plugin's demo: see what the plugin on this checkout DRAWS, in the Claude desktop app, with no match.
 #
 # packages/plugin-demo is a development mod (never installed with the plugin): one hooks module with a `/demo`
-# command that sets the plugin's own pitch and stadium drawings as the session's look. It holds no copy of a plugin
+# command that sets the plugin's own pitch and stadium drawings as the session's look, and plays the plugin's goal and
+# full-time celebration in the band above the prompt. It holds no copy of a plugin
 # file. This script assembles the mod: the demo's files, with the plugin's drawing modules from THIS checkout copied
 # beside its module, so the demo shows exactly what packages/plugin draws now.
 #
@@ -13,7 +14,8 @@
 # earlier copy of this demo) is refused, whatever it holds: nothing of yours is ever replaced, and there is nothing
 # to check about what a folder holds. Its parent must exist.
 #
-# Then load the folder in a session of the desktop app (the drawings show in the desktop and mobile apps only):
+# Then load the folder in a session of the desktop app (the scenes show in the desktop and mobile apps only; the
+# celebration also plays in a terminal's band, as text art):
 # start Claude Code with `--plugin-dir <folder>`, or name the folder in CLAUDE_CODE_PLUGIN_DIRS, and type `/demo`.
 # After a change to the plugin's drawing, run this again (a new folder each time) and load that folder.
 set -euo pipefail
@@ -24,7 +26,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 demo="$root/packages/plugin-demo"
 hooks="$root/packages/plugin/hooks"
 # The plugin modules the demo's module imports, and what those import.
-copies=(team-scenes.ts team-look.ts team-colors.ts make-colors.js make-colors.d.ts)
+copies=(team-scenes.ts team-look.ts team-colors.ts make-colors.js make-colors.d.ts celebration.tsx)
 
 [ -f "$demo/.claude-plugin/plugin.json" ] || { echo "plugin-demo: no demo at $demo" >&2; exit 1; }
 for f in "${copies[@]}"; do
