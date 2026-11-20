@@ -108,13 +108,13 @@ describe('the plugin demo (development only)', () => {
     // The script: it assembles through the demo's own script (never a copy list of its own) and runs the kit. That it
     // refuses a kit file that would replace an assembled one, and that its status is the kit's, is not read here.
     const script = read('scripts/plugin-demo-test.sh');
-    expect(script).toMatch(/^set -euo pipefail$/m);
+    expect(script).toMatch(/^set -euo pipefail\r?$/m);
     expect(script).toMatch(/plugin-demo\.sh/);
     expect(script).not.toMatch(/\bcopies=/);
     expect(script).toMatch(/packages\/plugin-demo-tests|plugin-demo-tests/);
     expect(script).toMatch(/^\s*claude plugin test\b/m);
     // CI's plugin job runs it after the plugin's own kit.
-    expect(read('.github/workflows/ci.yml')).toMatch(/bash scripts\/plugin-test\.sh\n\s+bash scripts\/plugin-demo-test\.sh\n/);
+    expect(read('.github/workflows/ci.yml')).toMatch(/bash scripts\/plugin-test\.sh\r?\n\s+bash scripts\/plugin-demo-test\.sh\r?\n/);
     expect(read('AGENTS.md')).toContain('`bash scripts/plugin-demo-test.sh`');
   });
 
