@@ -175,10 +175,11 @@ function notTheClubAnswer(answer) {
  * What the club's `next` answered (`next <team> --json`), and whether its TEXT
  * (`next <team>`) says so: a structured field is what the answer states, the
  * text is what a reader sees, and the render passes only when the second says
- * the first (they are two requests: a feed change between them fails this run,
- * which is run again). The sentences are core's own (`core`: `verdictNotice`,
- * `verdictQualifiers`, `nextHorizonSentence`, `nextNoneReadSentence`, handed
- * in), asked for and looked for in the text, never spelled here. They are
+ * the first (they are two requests: a feed change between them that the text
+ * shows fails this run, which is run again). The sentences are core's own
+ * (`core`: `verdictNotice`, `verdictQualifiers`, `nextHorizonSentence`,
+ * `nextNoneReadSentence`, `t`, handed in), asked for and looked for in the
+ * text, never spelled here. They are
  * asked for in ENGLISH because the script renders both in English (`next
  * Arsenal --lang en`: the flag wins over CLAUDINHO_LANG and LANG, so the
  * operator's language cannot fail a valid answer). The first row that applies
@@ -192,10 +193,13 @@ function notTheClubAnswer(answer) {
  *   - between editions: `between` (a VALID render) when the text says the
  *     verdict's sentence, else `fail`;
  *   - an outage: `outage` (the shell reports it as one; it proves no
- *     populated render);
+ *     populated render) when the text says core's outage sentence, else
+ *     `fail`;
  *   - a fixture with a side that has no name: `broken`;
  *   - a fixture: `ok` when one line of the text holds both clubs' names
- *     and, on a read that was not whole, says so; else `fail`;
+ *     and the text says the read was not whole when, and only when, the
+ *     answer does; else `fail` (a text whose own read was not whole but that
+ *     prints no qualifier, beside a whole JSON answer, is not detected);
  *   - no fixture, a read that was not whole: `ok` when the text says the
  *     none-read sentence AND every qualifier sentence, else `fail`;
  *   - no fixture, a whole read: a horizon with no span (`days` not a positive
@@ -231,7 +235,10 @@ export function clubNextVerdict(nextJson, nextText, core) {
     if (!says(core.verdictNotice(result, 'en'))) return { kind: 'fail', detail: 'betweenEditions is not said in the text' };
     return { kind: 'between', detail: `the edition ended ${between.ended}, and the text says so` };
   }
-  if (answer.degraded === true) return { kind: 'outage', detail: 'the provider could not be reached' };
+  if (answer.degraded === true) {
+    if (!says(core.t('en', 'live.degraded'))) return { kind: 'fail', detail: 'the outage is not said in the text' };
+    return { kind: 'outage', detail: 'the provider could not be reached' };
+  }
   const partial = isObject(answer.partial);
   if (isObject(fixture)) {
     // A side with no name is the answer's own defect, whatever the text says.
@@ -247,6 +254,17 @@ export function clubNextVerdict(nextJson, nextText, core) {
     if (partial) {
       if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'fail', detail: 'the partial read is not said in the text' };
       return { kind: 'ok', detail: 'a fixture, the read was not whole and the text says so' };
+    }
+    // Core's qualifier for a read that was not whole: uncounted, one record, or
+    // any count (built with a sentinel count, matched with digits in its place).
+    const sentinel = 987654321;
+    const escaped = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const counted = core.verdictQualifiers({ partial: { omitted: sentinel } }, 'en').map((s) => s.split(String(sentinel)));
+    if (
+      [{}, { omitted: 1 }].some((p) => core.verdictQualifiers({ partial: p }, 'en').some(says)) ||
+      counted.some((parts) => parts.length === 2 && new RegExp(`${escaped(parts[0])}\\d+${escaped(parts[1])}`).test(text))
+    ) {
+      return { kind: 'fail', detail: 'the text says the read was not whole and the answer does not' };
     }
     return { kind: 'ok', detail: 'a fixture' };
   }

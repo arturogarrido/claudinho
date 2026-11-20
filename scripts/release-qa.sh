@@ -54,7 +54,7 @@
 #
 # Exit code: non-zero if a tripwire FAILS (real regression). A degraded/unreachable
 # feed downgrades tripwires to SKIP (exit 0); a feed that changes between the club
-# answer's two requests fails that run (run it again).
+# answer's two requests fails that run when the text shows the change (run it again).
 
 set -uo pipefail
 
