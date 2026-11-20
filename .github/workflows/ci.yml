@@ -249,3 +249,4 @@ jobs:
           claude plugin validate .
           claude plugin validate packages/plugin
           bash scripts/plugin-test.sh
+          bash scripts/plugin-demo-test.sh
