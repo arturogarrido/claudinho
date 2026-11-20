@@ -2,19 +2,17 @@
  * 0.11 PR 2.1b — the knockout-facing RESULTS carry the window's own verdict.
  *
  * The surface tests (CLI and MCP `knockout-surface-coverage`) pin what a reader
- * sees; these pin the domain results underneath them, the one rule that turns
- * a read's account (`fetchMeta`) into the `partial` verdict, and the order a
- * card prints a qualifier in. A verdict is stated only when the read SAID its
- * answer was not whole: an adapter that says nothing states no verdict, and a
- * read that failed is `degraded`, not `partial`.
+ * sees; these pin the domain results underneath them and the one rule that
+ * turns a read's account (`fetchMeta`) into the `partial` verdict. A verdict is
+ * stated only when the read SAID its answer was not whole: an adapter that says
+ * nothing states no verdict, and a read that failed is `degraded`, not
+ * `partial`.
  */
 import { describe, expect, it } from 'vitest';
 import { EspnAdapter } from '../src/adapters/espn';
 import { attachFetchMeta, type FetchMeta, fetchMeta } from '../src/adapters/meta';
 import type { ProviderAdapter } from '../src/adapters/types';
-import { formatShareBracket } from '../src/bracket/format';
 import { getBracket, getKnockoutFixtures, getNextFixtureForTeam } from '../src/live';
-import { formatShareSnippet } from '../src/share/format';
 import type { Match } from '../src/types';
 import { partialOfRead, verdictExtras, verdictNotice, verdictQualifiers } from '../src/verdict';
 
@@ -139,27 +137,5 @@ describe('a read’s account becomes the verdict in one place', () => {
     // A `partial` that is not an object states nothing.
     expect(verdictExtras({ partial: null } as unknown as { partial?: { omitted?: number } })).toEqual({});
     expect(verdictQualifiers({ partial: null } as unknown as { partial?: { omitted?: number } }, 'en')).toEqual([]);
-  });
-});
-
-describe('a card prints its note BEFORE the body, populated or empty', () => {
-  const NOTE = 'Fixture data may be incomplete (1 provider record omitted).';
-
-  it('a match card', () => {
-    const populated = formatShareSnippet({ title: 'Next up for Mexico', matches: [tie()], note: NOTE });
-    expect(populated.indexOf(NOTE)).toBeGreaterThan(populated.indexOf('Next up for Mexico'));
-    expect(populated.indexOf(NOTE)).toBeLessThan(populated.indexOf('Ecuador'));
-    const empty = formatShareSnippet({ title: 'Next up for ARG', matches: [], emptyNote: 'No upcoming fixture found for ARG.', note: NOTE });
-    expect(empty.indexOf(NOTE)).toBeGreaterThan(-1);
-    expect(empty.indexOf(NOTE)).toBeLessThan(empty.indexOf('No upcoming fixture found for ARG.'));
-  });
-
-  it('a bracket card', () => {
-    const view = { stages: [], degraded: false, standingsDegraded: false };
-    const empty = formatShareBracket({ view, emptyNote: 'No bracket matches available.', note: NOTE });
-    expect(empty.indexOf(NOTE)).toBeGreaterThan(-1);
-    expect(empty.indexOf(NOTE)).toBeLessThan(empty.indexOf('No bracket matches available.'));
-    // Without a note the card is what it was.
-    expect(formatShareBracket({ view, emptyNote: 'No bracket matches available.' })).not.toContain('incomplete');
   });
 });

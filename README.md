@@ -285,8 +285,8 @@ yet, so the score-aware hook is Claude Code only.
 
 ### MCP server (any agent)
 
-The MCP server gives your agent ten read-only tools, among them today's matches, live scores, a
-team's next match, standings, one match with its goals and cards, and a shareable card. It works in
+The MCP server gives your agent nine read-only tools, among them today's matches, live scores, a
+team's next match, standings and one match with its goals and cards. It works in
 Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code, and any MCP client that runs a
 local (stdio) server.
 
@@ -321,14 +321,12 @@ The tools, the prompts and their fields: the [MCP README](https://github.com/art
   "¿Y si sí?", Pumas' "¡Goya!", Arsenal's "COYG!"). A postponed or cancelled match gets neither.
   `--flavor off` turns it off.
 - **Clubs and nations**: a nation shows with its flag and a club by its name; a nation whose flag no platform draws (Northern Ireland) shows by its name too. No crests, kits or photos.
-- **Shareable cards**: `claudinho share next --copy` puts a plain-text card for the group chat on
-  your clipboard.
 - **Prediction-market odds**: for World Cup matches, a "who's favored" line from Polymarket's public
-  data, shown under `today`, `match` and on share cards only when a reliable market exists.
+  data, shown under `today` and `match` only when a reliable market exists.
   **Informational only, not betting advice.** `--no-markets` hides it there; `claudinho markets`
   asks for the odds on purpose.
 - **Honest about gaps**: when the data provider sends something Claudinho cannot read, the commands
-  and MCP tools that read it, and their share cards, say their data may be incomplete, instead of
+  and MCP tools that read it say their data may be incomplete, instead of
   showing less as if it were all. The statusline and the hook do not.
 
 ## What stays on your machine
@@ -359,7 +357,7 @@ or a logo). A flag is a nation's, so a club shows by its name.
 **Flags show as boxed letters (`CH`, `BA`)?** Some terminals (Warp, some Windows terminals) cannot
 draw flag emoji. Claudinho detects Warp and drops the flags: the statusline and `bracket` show
 3-letter codes (`MEX`), and `today`, `live`, `next`, `match`, `table`, `team` and the hook show plain
-team names. Share cards keep their flags. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep the
+team names. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep the
 flags with `CLAUDINHO_FLAGS=on`.
 
 ## Around the web

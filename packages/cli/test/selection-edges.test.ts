@@ -3,8 +3,7 @@
  * (0.11 · 2.5a): the mode line and the `competition` key on `markets` (every
  * branch); `team --json` carries no key; the refusal in the reader's
  * language; the ambient commands never start a refresher for a refused
- * selection, and the refresher itself refreshes nothing; `share --copy`
- * copies exactly the card printed (no mode line in it).
+ * selection, and the refresher itself refreshes nothing.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -22,7 +21,6 @@ import {
   cmdNext,
   cmdPrompt,
   cmdRefresh,
-  cmdShare,
   cmdTable,
   cmdTeam,
   cmdToday,
@@ -210,17 +208,6 @@ describe('a refused selection', () => {
   });
 });
 
-describe('share --copy copies exactly the card printed', () => {
-  it('no mode line in the card, on stdout or on the clipboard', async () => {
-    const copy = vi.fn((_text: string) => true);
-    await cmdShare('2026-06-11', undefined, { copy: true }, { ...ctxOf(cfgOf({ competition: 'world-cup' })), copy });
-    const printed = text().replace(/\n$/, '');
-    expect(copy).toHaveBeenCalledWith(printed);
-    expect(printed).not.toContain('from the command line');
-    expect(printed.split('\n')[0]).toMatch(/ · World Cup$/);
-  });
-});
-
 describe('the mode line and the key on the branches with no header, and the rest', () => {
   const WC = 'World Cup · from the command line';
   const KEY = { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'flag' };
@@ -262,14 +249,6 @@ describe('the mode line and the key on the branches with no header, and the rest
     writes = [];
     await cmdBracket(undefined, {}, ctxOf(cfgOf({ competition: 'world-cup', json: true })));
     expect((JSON.parse(text()) as Record<string, unknown>).competition).toEqual(KEY);
-  });
-
-  it('share table and share bracket --json carry the key', async () => {
-    for (const target of ['table', 'bracket']) {
-      writes = [];
-      await cmdShare(target, undefined, {}, ctxOf(cfgOf({ competition: 'world-cup', json: true })));
-      expect((JSON.parse(text()) as Record<string, unknown>).competition, target).toEqual(KEY);
-    }
   });
 });
 

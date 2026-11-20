@@ -3,7 +3,6 @@ import { EspnAdapter, competitionBase } from '../src/adapters/espn';
 import { buildBracketView, isGroupStandingsComplete } from '../src/bracket/resolve';
 import type { BracketTopology } from '../src/bracket/types';
 import { getStandings } from '../src/live';
-import { formatShareTable } from '../src/share/format';
 import type { GroupStandings } from '../src/standings';
 import { parseEspnStandings } from '../src/trust/espn';
 
@@ -177,24 +176,5 @@ describe('A01 — bracket', () => {
     const view = buildBracketView(TOPOLOGY, [], tables, degraded, false);
     expect(view.stages[0]?.matches[0]?.home).toMatchObject({ code: 'GER', status: 'confirmed' });
     expect(view.stages[0]?.matches[0]?.away).toMatchObject({ code: 'MEX', status: 'confirmed' });
-  });
-});
-
-describe('A01 — share table', () => {
-  it('prints the provider ranks and says the table is partial', async () => {
-    const { tables, source } = await domainTables(PARTIAL);
-    const card = formatShareTable({ tables, source });
-    expect(card).toContain('2. 🇲🇽 MEX');
-    expect(card).toContain('3. 🇨🇦 CAN');
-    expect(card).not.toMatch(/^1\. /m);
-    expect(card).toMatch(/partial.*2 rows? unreadable/i);
-  });
-
-  it('a complete table prints 1..n exactly as before', async () => {
-    const { tables, source } = await domainTables(FULL);
-    const card = formatShareTable({ tables, source });
-    expect(card).toContain('1. 🇩🇪 GER');
-    expect(card).toContain('4. 🇧🇷 BRA');
-    expect(card).not.toMatch(/partial/i);
   });
 });

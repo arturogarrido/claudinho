@@ -21,7 +21,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { attachFetchMeta, FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
-import { cmdBracket, cmdMarkets, cmdNext, cmdShare } from '../src/commands';
+import { cmdBracket, cmdMarkets, cmdNext } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -110,22 +110,8 @@ describe('knockout surface coverage — every team-facing CLI surface live-resol
     expect(t).not.toContain(PLACEHOLDER_FLAG);
   });
 
-  it('`share next <team>` shows the resolved opponent, not the placeholder', async () => {
-    await cmdShare('next', 'MEX', {}, ctx());
-    const t = text();
-    expect(t).toContain('Ecuador');
-    expect(t).not.toContain(PLACEHOLDER_FLAG);
-  });
-
   it('`bracket` renders the resolved tie in its slot', async () => {
     await cmdBracket('R32', {}, ctx());
-    const t = text();
-    expect(t).toContain('Mexico');
-    expect(t).toContain('Ecuador');
-  });
-
-  it('`share bracket` renders the resolved tie in its slot', async () => {
-    await cmdShare('bracket', 'R32', {}, ctx());
     const t = text();
     expect(t).toContain('Mexico');
     expect(t).toContain('Ecuador');
@@ -221,6 +207,9 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
   it('`next <team>` for a team whose tie was the refused record: no fixture, the sentence, no elimination', async () => {
     await cmdNext('ARG', partialCtx());
     expect(text()).toContain(SENTENCE);
+    // Said before the empty answer it qualifies, as on a found fixture.
+    expect(text()).toMatch(/No upcoming fixture found for /);
+    expect(text().indexOf(SENTENCE)).toBeLessThan(text().search(/No upcoming fixture found for /));
     expect(text()).not.toContain(PLACEHOLDER_FLAG);
     expect(text().toLowerCase()).not.toContain('eliminated');
     writes = [];
@@ -238,27 +227,6 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
     writes = [];
     await cmdBracket('R32', {}, partialCtx({ json: true }));
     expect(JSON.parse(text())).toMatchObject({ partial: { omitted: 1 } });
-  });
-
-  it('`share next` and `share bracket`: the card carries the sentence beside a populated body, and the key in `--json`', async () => {
-    await cmdShare('next', 'MEX', {}, partialCtx());
-    expect(text()).toContain('Ecuador');
-    expect(text()).toContain(SENTENCE);
-    writes = [];
-    await cmdShare('next', 'ARG', {}, partialCtx());
-    expect(text()).toContain(SENTENCE); // the empty card, with the note
-    writes = [];
-    await cmdShare('bracket', 'R32', {}, partialCtx());
-    expect(text()).toContain('Mexico');
-    expect(text()).toContain(SENTENCE);
-    for (const [kind, arg] of [
-      ['next', 'MEX'],
-      ['bracket', 'R32'],
-    ] as const) {
-      writes = [];
-      await cmdShare(kind, arg, {}, partialCtx({ json: true }));
-      expect(JSON.parse(text()), kind).toMatchObject({ partial: { omitted: 1 } });
-    }
   });
 
   it('an adapter that says the answer is not whole without a count: the uncounted sentence and `partial: {}`', async () => {

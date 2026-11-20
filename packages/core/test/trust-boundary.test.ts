@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatShareSnippet, type Match, type MarketSignal } from '../src/index';
+import type { Match, MarketSignal } from '../src/index';
 import { mapEspnEvent } from '../src/adapters/espn';
 import { humanLabel, parseCachedMatch, parsedValue, sealMarketSignal } from '../src/trust';
 
@@ -96,12 +96,15 @@ describe('mapEspnEvent — feed-string sanitization (SEC-1 chokepoint)', () => {
     expect(m.venue).toContain('Banorte');
   });
 
-  it('renders a clean share card from the sanitized match', () => {
-    const snippet = formatShareSnippet(
-      { title: 'Match pulse', matches: [m], emptyNote: '-', installLine: 'npx @claudinho/cli' },
-      {},
-    );
-    expect(snippet).not.toContain(ESC);
+  it('leaves no control character in ANY string of the match (the renders: live-path-render.test.ts, cli and mcp)', () => {
+    const strings: string[] = [];
+    const walk = (v: unknown): void => {
+      if (typeof v === 'string') strings.push(v);
+      else if (v !== null && typeof v === 'object') for (const x of Object.values(v)) walk(x);
+    };
+    walk(m);
+    expect(strings.length).toBeGreaterThan(5);
+    for (const s of strings) expect(s, JSON.stringify(s)).not.toMatch(CONTROLS);
   });
 });
 

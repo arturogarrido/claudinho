@@ -8,7 +8,7 @@
  *   - `run [--offline|--replay <corpus>|--live] [--follow <alias>] [--twin] [--env K=V] -- <argv>`: phases `follow`,
  *     `main`, `twin`, each with its own stdout, stderr and exit; the spawns the product asked for recorded and never
  *     started; every fetch attempt recorded with its outcome; the result one JSON object with `ok`, `mode`, `phases`,
- *     `spawns`, `fetches`, `env` (the child's keys), `paths`; the install commands, `star`, `_refresh` and `--copy`
+ *     `spawns`, `fetches`, `env` (the child's keys), `paths`; the install commands, `star` and `_refresh`
  *     refused before any child; `--env` only for the scenario keys; the operator's environment never inherited;
  *   - `mcp`: one real stdio session (initialize, initialized, tools/list, tools/call); a stray stdout line, a protocol
  *     error, a missing reply or `isError` is `ok: false`; a silent server ends at the deadline, reaped;
@@ -226,8 +226,8 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     for (const f of ['doctor.version.txt', 'doctor.version.err', 'doctor.version.exit']) expect(readdirSync(o), f).toContain(f);
   });
 
-  it('run refuses the install commands, star, _refresh and --copy before any child; the temporary and the operator\'s settings stay untouched', () => {
-    for (const argv of [['init', 'claude'], ['init-statusline'], ['init-hook'], ['init-cursor-statusline'], ['claude'], ['cursor'], ['star'], ['_refresh'], ['share', 'today', '--copy'], ['share', 'next', 'Arsenal', '--copy']]) {
+  it('run refuses the install commands, star and _refresh before any child; the temporary and the operator\'s settings stay untouched', () => {
+    for (const argv of [['init', 'claude'], ['init-statusline'], ['init-hook'], ['init-cursor-statusline'], ['claude'], ['cursor'], ['star'], ['_refresh']]) {
       const { r, res, stderr } = verify(['run', '--json', '--out', out(), '--', ...argv]);
       expect(r.status, argv.join(' ')).toBe(2);
       expect(`${stderr}${res?.error ?? ''}`, argv.join(' ')).toMatch(/refus/i);
@@ -463,10 +463,10 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(res?.spawns, 'the spawn counter at the spaced path was loaded').toEqual([]);
   });
 
-  it('mcp: tools/list has ten tools each with an outputSchema; one call returns its text and data; offline get_today is degraded; a tool error and an unknown tool are ok false', { timeout: SLOW }, () => {
+  it('mcp: tools/list has nine tools each with an outputSchema; one call returns its text and data; offline get_today is degraded; a tool error and an unknown tool are ok false', { timeout: SLOW }, () => {
     const list = verify(['mcp', '--json', '--out', out(), '--list']);
     expect(list.r.status, list.res?.error).toBe(0);
-    expect((list.res?.tools ?? []).length).toBe(10);
+    expect((list.res?.tools ?? []).length).toBe(9);
     expect((list.res?.tools ?? []).every((t) => t.outputSchema != null)).toBe(true);
     const comps = verify(['mcp', '--json', '--out', out(), 'list_competitions']);
     expect(comps.res?.ok).toBe(true);

@@ -26,6 +26,10 @@ import {
   PolymarketProvider,
 } from '../src/index';
 
+import { marketAttributionText } from '../src/markets/format';
+
+// No betting or advice language in market copy (the Hard constraint's words, and their common forms).
+const BANNED = /\b(bet|betting|wager|gambling|value|edge|lock)\b/i;
 import { cacheableKeys, resolvedValues } from '../src/trust';
 import type { BatchResolution } from '../src/trust';
 /** The old {signals, checked} view, so these assertions keep their meaning. */
@@ -295,7 +299,21 @@ describe('copy bank', () => {
     const line = marketLine(build(hda(0.56, 0.25, 0.19)), match());
     expect(line).toContain('Polymarket');
     expect(line).toContain('informational only');
-    expect(line).not.toMatch(/\b(bet|wager|value|edge|lock)\b/i);
+    expect(line).not.toMatch(BANNED);
+  });
+
+  it('marketBlock is the bank\'s lines and nothing else: the favorite, the percentages, the attribution with its caveat', () => {
+    const signal = build(hda(0.56, 0.25, 0.19));
+    const block = marketBlock(signal, match());
+    expect(block).toEqual([
+      'Prediction markets slightly favor Mexico.',
+      marketProbabilityText(signal, match()),
+      `${marketAttributionText(signal)} · informational only`,
+    ]);
+    // The attribution names the provider and ends with the caveat, whatever the helper returns.
+    expect(block[2]).toContain('Polymarket');
+    expect(block[2]).toMatch(/ · informational only$/);
+    expect(block.join('\n')).not.toMatch(BANNED);
   });
 
   it('marketBlock attributes, timestamps, and flags staleness', () => {

@@ -10,7 +10,7 @@
 import type { Match, ProviderAdapter } from '@claudinho/core';
 import { FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdBracket, cmdMarkets, cmdMatch, cmdNext, cmdShare } from '../src/commands';
+import { cmdBracket, cmdMarkets, cmdMatch, cmdNext } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -72,8 +72,8 @@ afterEach(() => {
 const text = () => writes.join('');
 
 // 760415 is a bundled World Cup id: under another competition it must read as
-// "not available", never as the World Cup opener. Since 0.11 (2.1c) `next`,
-// `match <id>` and their share cards read the competition's own schedule ahead
+// "not available", never as the World Cup opener. Since 0.11 (2.1c) `next`
+// and `match <id>` read the competition's own schedule ahead
 // off the bundle, and a league season like `eng.1` says it has NO bracket
 // (`off-bundle-surfaces.test.ts` pins those answers, text and --json); the
 // bracket stays "not available yet" where a competition may have one (`ger.1`).
@@ -81,7 +81,6 @@ const CASES: [label: string, competition: string, run: (c: Ctx) => Promise<void>
   ['bracket', 'ger.1', (c) => cmdBracket(undefined, {}, c)],
   ['markets next <team>', 'eng.1', (c) => cmdMarkets('next', 'ARS', c)],
   ['markets <id>', 'eng.1', (c) => cmdMarkets('760415', undefined, c)],
-  ['share bracket', 'ger.1', (c) => cmdShare('bracket', undefined, {}, c)],
 ];
 
 describe('off the bundle: every command says "not available" in text AND in --json', () => {
@@ -150,31 +149,6 @@ describe('found in review: `markets <date>` off the markets’ scope', () => {
   });
 });
 
-describe('found in review: `share <date>` during an outage', () => {
-  const down = (competition: string): ProviderAdapter => ({
-    ...adapter(competition),
-    async fetchByDate(): Promise<Match[]> {
-      throw new Error('down');
-    },
-    async fetchWindow(): Promise<Match[]> {
-      throw new Error('down');
-    },
-  });
-
-  it('off the bundle the card says it could not ask, not that nothing is scheduled', async () => {
-    process.env.CLAUDINHO_COMPETITION = 'eng.1';
-    await cmdShare('2026-10-01', undefined, {}, { ...ctx('eng.1'), adapter: down('eng.1') });
-    expect(text()).toContain("Couldn't reach the data provider");
-    expect(text()).not.toContain('No matches scheduled');
-  });
-
-  it('on the bundle the schedule is known without the provider', async () => {
-    delete process.env.CLAUDINHO_COMPETITION;
-    await cmdShare('2026-10-01', undefined, {}, { ...ctx('fifa.world'), adapter: down('fifa.world') });
-    expect(text()).toContain('No matches scheduled for Oct 1.');
-  });
-});
-
 describe('on the bundle: no command invents the verdict', () => {
   beforeEach(() => {
     delete process.env.CLAUDINHO_COMPETITION;
@@ -185,11 +159,8 @@ describe('on the bundle: no command invents the verdict', () => {
     ['match <id>', (c) => cmdMatch('1', c)],
     ['bracket', (c) => cmdBracket(undefined, {}, c)],
     ['markets <id>', (c) => cmdMarkets('1', undefined, c)],
-    ['share <id>', (c) => cmdShare('1', undefined, {}, c)],
-    ['share bracket', (c) => cmdShare('bracket', undefined, {}, c)],
     ['next <team>', (c) => cmdNext('MEX', c)],
     ['markets next <team>', (c) => cmdMarkets('next', 'MEX', c)],
-    ['share next <team>', (c) => cmdShare('next', 'MEX', {}, c)],
   ];
 
   it.each(EMPTY)('%s: no `unsupported` key in --json, no notice in text', async (_label, run) => {

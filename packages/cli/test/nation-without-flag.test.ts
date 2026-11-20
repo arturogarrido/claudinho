@@ -9,7 +9,7 @@ import { type CacheState, writeState } from '../src/cache';
 // `prompt` and `hook` may start a detached refresher; the spawn is someone else's test.
 vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
 import { ambientView } from '../src/ambient';
-import { cmdHook, cmdLive, cmdPrompt, cmdShare, cmdToday, cmdVibe } from '../src/commands';
+import { cmdHook, cmdLive, cmdPrompt, cmdToday, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import { renderPrompt } from '../src/statusline';
@@ -115,20 +115,6 @@ describe('Northern Ireland renders by name on the CLI\'s interactive surfaces', 
     expect(t).toContain('Northern Ireland');
     expect(t).toContain('2–1');
     clean(t, 'live');
-  });
-
-  it('`share <date>` and `share live`: the social card by names, the compact one by codes, no flag shape for Northern Ireland', async () => {
-    for (const [target, state] of [['2026-11-17', 'pre'], ['live', 'in']] as const) {
-      for (const style of ['social', 'compact'] as const) {
-        writes = [];
-        await cmdShare(target, undefined, { style }, ctx(feed(state)));
-        const t = text();
-        const label = `share ${target} --style ${style}`;
-        expect(t, label).toContain(style === 'social' ? '🇭🇺 Hungary' : '🇭🇺 HUN');
-        expect(t, label).toMatch(style === 'social' ? /Northern Ireland/ : /\bNIR\b/);
-        clean(t, label);
-      }
-    }
   });
 });
 

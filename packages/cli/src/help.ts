@@ -30,7 +30,6 @@ export const HELP_GROUPS: ReadonlyArray<{ readonly title: string; readonly rows:
       ['next [team]', "a team's next match (default: your pinned team)"],
       ['table [key]', 'standings (default: every table)'],
       ['match <id>', 'one match, with its goals and cards'],
-      ['share [target] [team]', 'a card to paste: today, live, next, table...'],
       ['team <query>', "a nation's code, flag and group (World Cup)"],
       ['bracket [stage]', 'the knockout bracket (World Cup)'],
       ['markets [target] [team]', 'market signals, informational only (World Cup)'],

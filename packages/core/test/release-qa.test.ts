@@ -28,6 +28,7 @@ import {
   DISCLAIMER,
   nextHorizonSentence,
   nextNoneReadSentence,
+  t,
   verdictNotice,
   verdictQualifiers,
 } from '../src';
@@ -112,12 +113,22 @@ describe('the script asks those decisions, and sets no competition of its own', 
       ['BR_EN', 'BR_EN="$(cli bracket --lang en 2>/dev/null)"'],
       ['BR_UTC', 'BR_UTC="$(cli bracket --lang en --tz UTC 2>/dev/null)"'],
       ['BR_TYO', 'BR_TYO="$(cli bracket --lang en --tz Asia/Tokyo 2>/dev/null)"'],
-      ['SB', 'SB="$(cli share bracket --lang en 2>/dev/null)"'],
-      ['SBC', 'SBC="$(cli share bracket --lang en --style compact 2>/dev/null)"'],
+      ['TD_EN', 'TD_EN="$(cli today --lang en 2>/dev/null)"'],
     ]) {
       const assigned = lines.filter((l) => l.startsWith(`${name}=`));
       expect(assigned, name).toEqual([line]);
     }
+  });
+
+  it('asks nothing of the removed share command, and the shootout tripwire renders through a formatter that ships', () => {
+    expect(readFileSync(SCRIPT, 'utf8')).not.toMatch(/share/i);
+    // The disclaimer tripwires read two renders the script already makes in English.
+    expect(code).toMatch(/not affiliated with FIFA" <<<"\$BR_EN"/);
+    expect(code).toMatch(/not affiliated with FIFA" <<<"\$TD_EN"/);
+    // The penalty render: core's bracket list, which calls the one scoreline, on a synthetic shootout tie.
+    const pens = code.slice(code.indexOf('PENS="$('), code.indexOf('1(3)–1(4)" <<<"$PENS"'));
+    expect(pens).toContain('formatBracketList');
+    expect(pens).toContain('shootout');
   });
 
   it.skipIf(process.platform === 'win32')('parses', () => {
@@ -175,13 +186,17 @@ describe('the command-line form the script calls (not only the functions)', () =
     expect(run(['slug'], 'not json')).toBe('');
   });
 
-  it('`card` asks the built core\'s sentence builders (a horizon card whose snippet says its horizon is a render)', () => {
-    const text = `Next up for Arsenal · Premier League\n\n${nextHorizonSentence({ horizon: { days: 14 }, query: 'Arsenal' } as never, 'Arsenal', 'en')}\n\n${DISCLAIMER}`;
-    const json = JSON.stringify({ kind: 'next', team: 'Arsenal', snippet: text, matches: [], horizon: { days: 14 }, competition: { slug: 'eng.1', name: 'Premier League', chosenBy: 'saved' } });
-    expect(run(['card'], json)).toBe('ok:no fixture in the span, its sentence shown');
-    // The same card whose snippet does not say its horizon: the built core's sentence is what is asked for.
-    expect(run(['card'], json.replace(/No fixture for Arsenal[^\\]*days\./, 'Nothing.'))).toBe('fail:the horizon is not said in its snippet');
-    expect(run(['card'], '')).toBe('broken:the share command answered no card');
+  it('`next` asks the built core\'s sentence builders (a horizon answer whose text says its horizon is a render)', () => {
+    const sentence = nextHorizonSentence({ horizon: { days: 14 }, query: 'Arsenal' } as never, 'Arsenal', 'en') ?? '';
+    const text = `Next up for Arsenal\n  Premier League\n\n  ${sentence}\n\n${DISCLAIMER}`;
+    const json = JSON.stringify({ team: 'Arsenal', fixture: null, degraded: false, source: null, horizon: { days: 14 }, competition: { slug: 'eng.1', name: 'Premier League', chosenBy: 'saved' } });
+    expect(sentence).not.toBe('');
+    expect(run(['next', text], json)).toBe('ok:no fixture in the span, its sentence shown');
+    // The same answer whose text does not say its horizon: the built core's sentence is what is asked for.
+    expect(run(['next', text.replace(sentence, 'Nothing.')], json)).toBe('fail:the horizon is not said in its text');
+    expect(run(['next', text], '')).toBe('broken:the next command answered no JSON');
+    expect(run(['next-disclaimer'], text)).toBe('ok');
+    expect(run(['next-disclaimer'], text.replace(DISCLAIMER, ''))).toBe('fail:the club answer does not carry the disclaimer');
   });
 
   it('`label` names what the CLI resolved, read from its JSON on standard input', () => {
@@ -224,13 +239,11 @@ describe('the club render: its decisions, offline', () => {
     expect(qaLib.CLUB).toEqual({ alias: 'premier-league', slug: 'eng.1', team: 'Arsenal' });
   });
 
-  it('the club card carries the one disclaimer, whatever it answered (an outage and between editions included)', () => {
-    const card = (snippet: string, extra: Record<string, unknown> = {}) => JSON.stringify({ kind: 'next', snippet, ...extra });
-    expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`), DISCLAIMER)).toBe(true);
-    expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`, { degraded: true }), DISCLAIMER)).toBe(true);
-    expect(qaLib.cardCarriesDisclaimer(card('x\nIndependent fan project · not affiliated with FIFA or Anthropic.'), DISCLAIMER)).toBe(false);
-    expect(qaLib.cardCarriesDisclaimer('', DISCLAIMER)).toBe(false);
-    expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`), '')).toBe(false);
+  it('the club answer\'s text carries the one disclaimer, whatever it answered', () => {
+    expect(qaLib.textCarriesDisclaimer(`x\n${DISCLAIMER}`, DISCLAIMER)).toBe(true);
+    expect(qaLib.textCarriesDisclaimer('x\nIndependent fan project · not affiliated with FIFA or Anthropic.', DISCLAIMER)).toBe(false);
+    expect(qaLib.textCarriesDisclaimer('', DISCLAIMER)).toBe(false);
+    expect(qaLib.textCarriesDisclaimer(`x\n${DISCLAIMER}`, '')).toBe(false);
   });
 
   it('the Portuguese table: the header row\'s first cell is Time; any other header fails, naming it; no box row skips; nothing is broken', () => {
@@ -257,21 +270,20 @@ describe('the club render: its decisions, offline', () => {
 });
 
 /**
- * The club card (0.11 · 2.7, review round 1): `clubCardVerdict` asks the card
- * what it answered and asks the SNIPPET whether it says so, with core's own
- * sentence builders handed in. One case per row of its table, in its order.
+ * The club answer: `clubNextVerdict` asks `next Arsenal --json` what it
+ * answered and asks the TEXT of `next Arsenal` whether it says so, with core's
+ * own sentence builders handed in. One case per row of its table, in its order.
  */
-describe('the club card: what it answered, and whether its snippet says so', () => {
-  const CORE = { verdictNotice, verdictQualifiers, nextHorizonSentence, nextNoneReadSentence };
+describe('the club answer: what next answered, and whether its text says so', () => {
+  const CORE = { verdictNotice, verdictQualifiers, nextHorizonSentence, nextNoneReadSentence, t };
   const ARS = { id: 'espn:359', code: 'ARS', name: 'Arsenal' };
   const CHE = { id: 'espn:363', code: 'CHE', name: 'Chelsea' };
   const FIXTURE = { id: '800000011', stage: 'REGULAR', kickoff: '2026-10-10T14:00:00.000Z', venue: 'Emirates Stadium', home: ARS, away: CHE, status: 'SCHEDULED', updatedAt: '2026-10-04T12:00:00.000Z' };
   const PL = { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' };
-  const FOOTER = `#VibingLaVidaLoca · Independent fan project · ${DISCLAIMER}`;
-  const snippet = (...body: string[]) => ['Next up for Arsenal · Premier League', '', ...body, '', FOOTER].join('\n');
-  const card = (over: Record<string, unknown>, text: string) =>
-    JSON.stringify({ kind: 'next', target: 'next', team: ARS, snippet: text, matches: [], competition: PL, ...over });
-  // The sentence a card of this shape prints, from core's builders (never spelled here).
+  const text = (...body: string[]) => ['', 'Next up for Arsenal', '  Premier League', '', ...body.map((l) => `  ${l}`), '', DISCLAIMER].join('\n');
+  const answer = (over: Record<string, unknown>) =>
+    JSON.stringify({ team: ARS, fixture: null, degraded: false, source: null, competition: PL, ...over });
+  // The sentence an answer of this shape prints, from core's builders (never spelled here).
   const said = (over: Record<string, unknown>) => {
     const result = { team: ARS, query: 'Arsenal', ...over } as never;
     return {
@@ -281,29 +293,29 @@ describe('the club card: what it answered, and whether its snippet says so', () 
       noneRead: nextNoneReadSentence(result, 'Arsenal', 'en') ?? '',
     };
   };
-  const verdict = (json: string) => qaLib.clubCardVerdict(json, CORE);
+  const verdict = (json: string, shown: string) => qaLib.clubNextVerdict(json, shown, CORE);
 
-  it('no JSON, or no snippet: broken, the share command answered no card', () => {
-    for (const json of ['', 'not json', JSON.stringify({ kind: 'next', matches: [], competition: PL, team: ARS }), card({}, '')]) {
-      expect(verdict(json), json).toEqual({ kind: 'broken', detail: 'the share command answered no card' });
+  it('no JSON: broken; no text: broken', () => {
+    for (const json of ['', 'not json', '[]', 'null']) {
+      expect(verdict(json, text('x')), json).toEqual({ kind: 'broken', detail: 'the next command answered no JSON' });
     }
+    expect(verdict(answer({ horizon: { days: 14 } }), '')).toEqual({ kind: 'broken', detail: 'the next command printed nothing' });
   });
 
-  it('a card that is not this club render\'s next card is broken, and says what is wrong', () => {
-    const text = snippet(said({ horizon: { days: 14 } }).horizon);
+  it("an answer that is not this club render's is broken, and says what is wrong", () => {
+    const shown = text(said({ horizon: { days: 14 } }).horizon);
     const cases: Array<[Record<string, unknown>, RegExp]> = [
-      [{ kind: 'date' }, /kind/],
-      [{ kind: undefined }, /kind/],
-      [{ competition: { ...PL, slug: 'fifa.world' } }, /fifa\.world|competition/],
+      [{ competition: { ...PL, slug: 'fifa.world' } }, /fifa\.world/],
       [{ competition: undefined }, /competition/],
-      [{ matches: undefined }, /matches/],
-      [{ matches: 'none' }, /matches/],
+      [{ fixture: undefined }, /fixture/],
+      [{ fixture: 'none' }, /fixture/],
+      [{ fixture: [] }, /fixture/],
       [{ team: undefined }, /team/],
       [{ team: '' }, /team/],
       [{ team: { code: 'ARS' } }, /team/],
     ];
     for (const [over, why] of cases) {
-      const v = verdict(card({ horizon: { days: 14 }, ...over }, text));
+      const v = verdict(answer({ horizon: { days: 14 }, ...over }), shown);
       expect(v.kind, JSON.stringify(over)).toBe('broken');
       expect(v.detail, JSON.stringify(over)).toMatch(why);
     }
@@ -311,91 +323,121 @@ describe('the club card: what it answered, and whether its snippet says so', () 
 
   it('a betweenEditions that states no date is broken', () => {
     for (const between of [{}, { ended: 'soon' }, { ended: 20270523 }, 'yes', true]) {
-      expect(verdict(card({ betweenEditions: between }, snippet('x'))), JSON.stringify(between)).toEqual({ kind: 'broken', detail: 'betweenEditions states no date' });
+      expect(verdict(answer({ betweenEditions: between }), text('x')), JSON.stringify(between)).toEqual({ kind: 'broken', detail: 'betweenEditions states no date' });
     }
   });
 
   it('candidates: Arsenal resolved to several clubs, a failed render', () => {
-    const v = verdict(card({ team: 'Arsenal', candidates: [ARS, { id: 'espn:9', code: 'ARW', name: 'Arsenal Women' }] }, snippet('"Arsenal" is ambiguous.')));
+    const v = verdict(answer({ team: 'Arsenal', candidates: [ARS, { id: 'espn:9', code: 'ARW', name: 'Arsenal Women' }] }), text('"Arsenal" is ambiguous.'));
     expect(v).toEqual({ kind: 'fail', detail: '"Arsenal" resolved to 2 clubs; the club render asks one name that must resolve' });
   });
 
   it('a replacing verdict about the club, or the competition, is a failed render', () => {
     for (const key of ['unknownTeam', 'rosterIncomplete', 'noCompetition', 'unsupported', 'inapplicable']) {
-      const v = verdict(card({ team: 'Arsenal', [key]: true }, snippet(said({ [key]: true }).notice)));
-      expect(v, key).toEqual({ kind: 'fail', detail: `the card answered ${key} for Arsenal` });
+      const v = verdict(answer({ team: 'Arsenal', [key]: true }), text(said({ [key]: true }).notice));
+      expect(v, key).toEqual({ kind: 'fail', detail: `next answered ${key} for Arsenal` });
     }
   });
 
-  it('between editions is a VALID render when the snippet says so, and a failed one when it does not', () => {
+  it('between editions is a VALID render when the text says so, and a failed one when it does not', () => {
     const between = { betweenEditions: { ended: '2027-05-23' } };
-    expect(verdict(card(between, snippet(said(between).notice)))).toEqual({ kind: 'between', detail: 'the edition ended 2027-05-23, and the card says so' });
-    expect(verdict(card(between, snippet('No upcoming fixture found for Arsenal.')))).toEqual({ kind: 'fail', detail: "the card's betweenEditions is not said in its snippet" });
+    expect(verdict(answer(between), text(said(between).notice))).toEqual({ kind: 'between', detail: 'the edition ended 2027-05-23, and the text says so' });
+    expect(verdict(answer(between), text('No upcoming fixture found for Arsenal.'))).toEqual({ kind: 'fail', detail: 'betweenEditions is not said in the text' });
   });
 
-  it('an outage is reported as one', () => {
-    expect(verdict(card({ team: 'Arsenal', degraded: true }, snippet("Couldn't reach the data provider.")))).toEqual({ kind: 'outage', detail: 'the provider could not be reached, and the card says so' });
+  it('an outage is reported as one when the text says so, and a failed render when it says anything else', () => {
+    const outage = answer({ team: 'Arsenal', degraded: true });
+    expect(verdict(outage, text(t('en', 'live.degraded')))).toEqual({ kind: 'outage', detail: 'the provider could not be reached' });
+    for (const shown of ["Couldn't reach the data provider.", said({ unknownTeam: true }).notice, 'Arsenal vs Chelsea']) {
+      expect(shown).not.toBe('');
+      expect(verdict(outage, text(shown)), shown).toEqual({ kind: 'fail', detail: 'the outage is not said in the text' });
+    }
   });
 
-  it('a fixture: its two clubs must be in the snippet, and a read that was not whole must say so there', () => {
-    const fixture = { matches: [FIXTURE] };
-    expect(verdict(card(fixture, snippet('Arsenal vs Chelsea', 'Oct 10 · 14:00 UTC')))).toEqual({ kind: 'ok', detail: 'a fixture' });
-    expect(verdict(card(fixture, snippet('Arsenal vs', 'Oct 10 · 14:00 UTC')))).toEqual({ kind: 'fail', detail: 'the fixture is not in the snippet' });
-    const partial = { matches: [FIXTURE], partial: { omitted: 2 } };
-    const qualifiers = said({ ...partial, fixture: FIXTURE }).qualifiers;
+  it('a fixture: both clubs must be named on one line of the text, and a read that was not whole must say so there', () => {
+    const fixture = { fixture: FIXTURE };
+    expect(verdict(answer(fixture), text('Arsenal vs Chelsea', 'Oct 10 · 14:00 UTC'))).toEqual({ kind: 'ok', detail: 'a fixture' });
+    // Both NAMES, on one line (the row): the header names Arsenal whatever the fixture, and a code is not a name.
+    for (const row of ['ARS vs CHE', 'Arsenal vs', 'vs Chelsea', 'Arsenal vs CHE']) {
+      expect(verdict(answer(fixture), text(row, 'Oct 10 · 14:00 UTC')), row).toEqual({ kind: 'fail', detail: 'the fixture is not in the text' });
+    }
+    expect(verdict(answer(fixture), text('Arsenal', 'vs', 'Chelsea'))).toEqual({ kind: 'fail', detail: 'the fixture is not in the text' });
+    // A side the ANSWER does not name is the answer's defect, whatever the text says.
+    for (const side of [{ id: 'espn:363', code: 'CHE' }, { ...CHE, name: '' }, null]) {
+      const nameless = { fixture: { ...FIXTURE, away: side } };
+      expect(verdict(answer(nameless), text('Arsenal vs Chelsea')), JSON.stringify(side)).toEqual({ kind: 'broken', detail: 'the fixture names no club on one side' });
+    }
+    const partial = { fixture: FIXTURE, partial: { omitted: 2 } };
+    const qualifiers = said(partial).qualifiers;
     expect(qualifiers.length).toBeGreaterThan(0);
-    expect(verdict(card(partial, snippet(...qualifiers, '', 'Arsenal vs Chelsea')))).toEqual({ kind: 'ok', detail: 'a fixture, the read was not whole and the card says so' });
-    expect(verdict(card(partial, snippet('Arsenal vs Chelsea')))).toEqual({ kind: 'fail', detail: "the card's partial read is not said in its snippet" });
+    expect(verdict(answer(partial), text(...qualifiers, 'Arsenal vs Chelsea'))).toEqual({ kind: 'ok', detail: 'a fixture, the read was not whole and the text says so' });
+    expect(verdict(answer(partial), text('Arsenal vs Chelsea'))).toEqual({ kind: 'fail', detail: 'the partial read is not said in the text' });
+    // The other direction: a text that says its read was not whole, beside an answer that says it was.
+    for (const p of [{}, { omitted: 1 }, { omitted: 2 }, { omitted: 37 }]) {
+      const shown = said({ fixture: FIXTURE, partial: p }).qualifiers;
+      expect(shown.length, JSON.stringify(p)).toBeGreaterThan(0);
+      expect(verdict(answer(fixture), text(...shown, 'Arsenal vs Chelsea')), JSON.stringify(p)).toEqual({
+        kind: 'fail',
+        detail: 'the text says the read was not whole and the answer does not',
+      });
+      // The sentence as a club's NAME, on the fixture's row, is a name: only a line of its own is the qualifier.
+      const name = shown[0] as string;
+      const named = { fixture: { ...FIXTURE, away: { ...CHE, name } } };
+      expect(verdict(answer(named), text(`Arsenal vs ${name}`, 'Oct 10 · 14:00 UTC')), name).toEqual({ kind: 'ok', detail: 'a fixture' });
+      // The name FIRST on the row, as a home club prints: the line starts with the sentence and goes on.
+      const home = { fixture: { ...FIXTURE, home: { ...CHE, name }, away: ARS } };
+      expect(verdict(answer(home), text(`${name} vs Arsenal   Oct 10 · 14:00 UTC`)), name).toEqual({ kind: 'ok', detail: 'a fixture' });
+      expect(verdict(answer(named), text(name, `Arsenal vs ${name}`)), name).toEqual({
+        kind: 'fail',
+        detail: 'the text says the read was not whole and the answer does not',
+      });
+    }
   });
 
-  it('no fixture READ in a span that was not whole: the none-read sentence must be in the snippet', () => {
-    const partial = { partial: {} };
-    const s = said(partial);
-    expect(s.noneRead).not.toBe('');
-    expect(verdict(card(partial, snippet(...s.qualifiers, s.noneRead)))).toEqual({ kind: 'ok', detail: 'no fixture READ in the span (the read was not whole), its sentence shown' });
-    const missing = verdict(card(partial, snippet(...s.qualifiers, 'No upcoming fixture found for Arsenal.')));
-    expect(missing.kind).toBe('fail');
-  });
-
-  it('an empty partial card must say its qualifier too: the none-read sentence alone is not enough', () => {
+  it('no fixture READ in a span that was not whole: the none-read sentence and every qualifier must be in the text', () => {
     for (const partial of [{}, { omitted: 2 }]) {
       const over = { partial };
       const s = said(over);
       expect(s.qualifiers.length, JSON.stringify(partial)).toBeGreaterThan(0);
       expect(s.noneRead, JSON.stringify(partial)).not.toBe('');
-      expect(verdict(card(over, snippet(...s.qualifiers, s.noneRead))), JSON.stringify(partial)).toEqual({
+      expect(verdict(answer(over), text(...s.qualifiers, s.noneRead)), JSON.stringify(partial)).toEqual({
         kind: 'ok',
         detail: 'no fixture READ in the span (the read was not whole), its sentence shown',
       });
-      expect(verdict(card(over, snippet(s.noneRead))), JSON.stringify(partial)).toEqual({
+      expect(verdict(answer(over), text(...s.qualifiers, 'No upcoming fixture found for Arsenal.')), JSON.stringify(partial)).toEqual({
         kind: 'fail',
-        detail: "the card's partial read is not said in its snippet",
+        detail: 'the none-read sentence is not said in the text',
+      });
+      expect(verdict(answer(over), text(s.noneRead)), JSON.stringify(partial)).toEqual({
+        kind: 'fail',
+        detail: 'the partial read is not said in the text',
       });
     }
   });
 
   it('a horizon is believed only with a span: a positive whole number of days', () => {
-    for (const horizon of [{}, { days: 'soon' }, { days: 0 }, { days: 14.5 }, { days: -1 }, null, 'x']) {
-      const text = snippet(said({ horizon: { days: 14 } }).horizon);
-      expect(verdict(card({ horizon }, text)), JSON.stringify(horizon)).toEqual({ kind: 'broken', detail: 'horizon states no span' });
+    for (const horizon of [{}, { days: 'soon' }, { days: 0 }, { days: 14.5 }, { days: -1 }, 'x']) {
+      const shown = text(said({ horizon: { days: 14 } }).horizon);
+      expect(verdict(answer({ horizon }), shown), JSON.stringify(horizon)).toEqual({ kind: 'broken', detail: 'horizon states no span' });
     }
   });
 
-  it('no fixture in the span (a whole read): the horizon sentence must be in the snippet', () => {
+  it('no fixture in the span (a whole read): the horizon sentence must be in the text', () => {
     const horizon = { horizon: { days: 14 } };
     const s = said(horizon);
     expect(s.horizon).not.toBe('');
-    expect(verdict(card(horizon, snippet(s.horizon)))).toEqual({ kind: 'ok', detail: 'no fixture in the span, its sentence shown' });
-    expect(verdict(card(horizon, snippet('No upcoming fixture found for Arsenal.')))).toEqual({ kind: 'fail', detail: 'the horizon is not said in its snippet' });
+    expect(verdict(answer(horizon), text(s.horizon))).toEqual({ kind: 'ok', detail: 'no fixture in the span, its sentence shown' });
+    expect(verdict(answer(horizon), text('No upcoming fixture found for Arsenal.'))).toEqual({ kind: 'fail', detail: 'the horizon is not said in its text' });
   });
 
-  it('an empty card with no horizon and no partial verdict is broken (the next card has no such shape)', () => {
-    expect(verdict(card({}, snippet('No upcoming fixture found for Arsenal.')))).toEqual({
+  it('no fixture, no horizon and no partial verdict is broken (next off the bundle has no such answer)', () => {
+    expect(verdict(answer({}), text('No upcoming fixture found for Arsenal.'))).toEqual({
       kind: 'broken',
-      detail: 'an empty card with no horizon and no partial verdict is not a shape the next card has',
+      detail: 'no fixture, no horizon and no partial verdict is not an answer next gives off the bundle',
     });
   });
 });
+
 
 describe('the club render: the script asks those decisions', () => {
   const script = readFileSync(SCRIPT, 'utf8');
@@ -422,19 +464,25 @@ describe('the club render: the script asks those decisions', () => {
   });
 
   it('renders the club surfaces, never the bracket, and counts its failures into the one final count', () => {
-    for (const asked of ['crun today', 'crun live', 'crun next Arsenal', 'crun table', 'crun table LEAGUE', 'club share next Arsenal --lang en --json', 'club table LEAGUE --lang pt']) {
+    for (const asked of ['crun today', 'crun live', 'club next Arsenal --lang en', 'crun table', 'crun table LEAGUE', 'club next Arsenal --lang en --json', 'club table LEAGUE --lang pt']) {
       expect(code, asked).toContain(asked);
     }
-    expect(code).not.toMatch(/(crun|club) (share )?bracket/);
-    for (const q of ['qa club-followed', 'qa card', 'qa card-disclaimer', 'qa pt-table', 'qa prompt']) expect(code, q).toContain(q);
+    expect(code).not.toMatch(/(crun|club) bracket/);
+    for (const q of ['qa club-followed', 'qa next ', 'qa next-disclaimer', 'qa pt-table', 'qa prompt']) expect(code, q).toContain(q);
     // One summary line, after the club checks.
     expect(code.lastIndexOf('qa prompt')).toBeLessThan(code.indexOf('bold "tripwires: $PASS passed'));
   });
 
-  it('the club card is rendered in English, the language its validator asks core for (the flag wins over CLAUDINHO_LANG and LANG)', () => {
-    const asked = code.split('\n').filter((l) => /club share next Arsenal/.test(l));
-    expect(asked).toHaveLength(1);
-    expect(asked[0]).toContain('CLUB_CARD="$(club share next Arsenal --lang en --json 2>/dev/null)"');
+  it('the club answer is read in English, the language its validator asks core for: its text once, its JSON once, and never again', () => {
+    const asked = code.split('\n').map((l) => l.trim()).filter((l) => /club next Arsenal/.test(l));
+    expect(asked).toEqual([
+      'CLUB_NEXT_TEXT="$(club next Arsenal --lang en 2>/dev/null)"',
+      'CLUB_NEXT_JSON="$(club next Arsenal --lang en --json 2>/dev/null)"',
+    ]);
+    // One read, one verdict: a second read could only replace a failure with a later answer.
+    expect(readFileSync(SCRIPT, 'utf8')).not.toMatch(/read again|read_club_next|CLUB_FIRST_TEXT/);
+    expect(code.split('\n').filter((l) => /qa next /.test(l))).toHaveLength(1);
+    expect(code).toContain('qa next-disclaimer <<<"$CLUB_NEXT_TEXT"');
   });
 
   it('every club command reads and writes the temporary cache, never the operator\'s (club() exports both directories)', () => {
@@ -455,6 +503,7 @@ describe('the club render: the script asks those decisions', () => {
 
   it('states the added work in its header: the GETs, the timeout and the estimate', () => {
     expect(header).toMatch(/17 GETs/);
+    expect(header).not.toMatch(/6 more/);
     expect(header).toMatch(/two months/);
     expect(header).toMatch(/6-second/);
     expect(header).toMatch(/under two minutes/);

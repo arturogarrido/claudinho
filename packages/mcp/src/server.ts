@@ -36,7 +36,6 @@ import {
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
-  toolGetShareSnippet,
   toolGetStandings,
   toolGetTeam,
   toolGetToday,
@@ -55,15 +54,14 @@ const VOICE =
     ? ''
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!"): use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
-export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request, chosen by the tool call's competition argument (an alias such as premier-league, its name (Premier League) or a short form (epl), or an ESPN slug such as eng.1), else the server's CLAUDINHO_COMPETITION, else the user's saved choice (set with claudinho follow <alias>). With none of the three, every competition-answering tool answers noCompetition with a sentence saying what to do: pass competition, or ask the user to run claudinho follow <alias>. list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's, get_share_snippet's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (get_share_snippet's card names it in its title; list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that suggests the nearest alias when there is one and lists the aliases.
-get_next_fixture and get_share_snippet take a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. get_next_fixture with no team answers for the server's CLAUDINHO_TEAM, else for the team the user pinned (claudinho follow <alias> --team <name>) when the request is for that team's competition. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
+export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request, chosen by the tool call's competition argument (an alias such as premier-league, its name (Premier League) or a short form (epl), or an ESPN slug such as eng.1), else the server's CLAUDINHO_COMPETITION, else the user's saved choice (set with claudinho follow <alias>). With none of the three, every competition-answering tool answers noCompetition with a sentence saying what to do: pass competition, or ask the user to run claudinho follow <alias>. list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that suggests the nearest alias when there is one and lists the aliases.
+get_next_fixture takes a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. get_next_fixture with no team answers for the server's CLAUDINHO_TEAM, else for the team the user pinned (claudinho follow <alias> --team <name>) when the request is for that team's competition. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree (a league season with no knockout tie answers inapplicable).
 Off the World Cup, get_next_fixture and get_match search from yesterday to 14 days ahead: an empty answer carrying horizon or window is about that span, not about the team or the match. betweenEditions means the competition's edition has ended and the next has not started.
-Never infer that a fixture is happening now from get_next_fixture or a team's next card: relay the returned competition, the fixture, its date and its state, and call it in play only when the returned state says so; an empty answer keeps its horizon or verdict, never an invented fixture.
+Never infer that a fixture is happening now from get_next_fixture: relay the returned competition, the fixture, its date and its state, and call it in play only when the returned state says so; an empty answer keeps its horizon or verdict, never an invented fixture.
 An empty get_today or get_live may carry nextDay or nextKickoff: the next day with a fixture, or the next kickoff ahead, never a match in play now; horizon says none falls in the next 14 days.
 get_standings with no group returns every table. One table is selected by its key, which every table's title shows in parentheses unless it is a plain group letter: A to L for lettered groups, A1 for a numbered group, A-B for group B of league A, LEAGUE for a league's single table.
-Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only: relay the percentages factually and never frame it as betting or trading advice.
-Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches), and hand the user the returned snippet text verbatim.${VOICE}
+Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only: relay the percentages factually and never frame it as betting or trading advice.${VOICE}
 ${DISCLAIMER}`;
 
 // Tightened, reusable input schemas (exported for tests). Rejecting bad input
@@ -97,10 +95,7 @@ export const flavorArg = z.enum(['off', 'subtle', 'full']);
 /**
  * A time zone is an IDENTIFIER (a text role, like a team code), not prose: an
  * IANA zone the runtime can resolve, checked at the edge, so the SDK refuses
- * anything else before a handler runs or a request is made. The share
- * formatter prints the zone verbatim beside every time; a 40,000-character
- * "zone" pushed a date card past the text cut, which dropped the row the
- * provider served and kept the attribution beside a bundled one. The set the
+ * anything else before a handler runs or a request is made. The set the
  * runtime knows bounds its length (IANA's longest names are 30 characters).
  */
 export const tzArg = z
@@ -450,41 +445,6 @@ const marketOut = {
   ...selectionOut,
   ...responseMeta,
 };
-const shareOut = {
-  kind: z.string(),
-  target: z.string().optional(),
-  snippet: z.string().optional(), // absent on the bracket "unknown stage" error branch
-  source: src.optional(),
-  served: servedOut.optional(),
-  informationalOnly: z.boolean().optional(),
-  degraded: z.boolean().optional(),
-  style: z.string().optional(),
-  // A next card's team: the club resolved (provider id, code, name) when one
-  // was, the query (a nation's code on the World Cup) otherwise.
-  team: z.union([z.string(), teamRef]).optional(),
-  candidates: z
-    .array(teamRef)
-    .optional()
-    .describe('A next card for a name two or more teams match: them, and no fixture is picked'),
-  group: z.string().optional(),
-  stage: z.string().optional(),
-  tables: z.union([anyObj, z.array(anyObj), z.null()]).optional(),
-  view: anyObj.nullable().optional(),
-  matches: z.array(matchOut).optional(),
-  marketSignals: z.record(anyObj).optional(),
-  marketComplete: z
-    .boolean()
-    .optional()
-    .describe('False when optional market enrichment did not check every relevant fixture'),
-  count: z.number().optional(),
-  truncated: z.boolean().optional(),
-  horizon: horizonOut.optional(),
-  window: windowOut.optional(),
-  ...verdictOut,
-  ...partialOut,
-  ...selectionOut,
-  ...responseMeta,
-};
 const teamInfo = z
   .object({ code: z.string(), name: z.string(), flag: z.string(), group: z.string() })
   .partial()
@@ -538,7 +498,6 @@ export const OUTPUT_SCHEMAS = {
   get_bracket: bracketOut,
   get_next_fixture: nextOut,
   get_market_signal: marketOut,
-  get_share_snippet: shareOut,
   get_team: teamOut,
   list_competitions: listCompetitionsOut,
 } as const;
@@ -564,8 +523,7 @@ const RESPONSE_TRUNCATION =
  * Shrink a payload until it fits, whatever SHAPE it has.
  *
  * The first version special-cased a top-level `matches` array, which meant the
- * bracket, standings and share shapes walked straight past it — a 300 KB share
- * snippet was returned in full. Bounding the shape you thought of is not
+ * bracket and standings shapes walked straight past it. Bounding the shape you thought of is not
  * bounding the payload.
  *
  * Generic, in increasing order of damage: drop optional `events` detail,
@@ -1006,49 +964,11 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
-    'get_share_snippet',
-    {
-      title: 'Shareable match snippet',
-      description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data: hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (on any match card, live and date included) is stated inside the card too: the provider sent records that could not be used. Off the World Cup a next card names the club resolved, and an empty card says the span searched (horizon, window) or that the competition is between editions. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
-      inputSchema: {
-        matchId: z.string().optional().describe('Match id (most specific)'),
-        team: clubArg
-          .optional()
-          .describe("A team name or code for that team's next fixture: a club (Arsenal) or a nation (MEX)"),
-        group: groupArg.optional().describe('Table key for a standings card: a group letter (A), or A1, A-B, LEAGUE'),
-        bracket: z.boolean().optional().describe('Knockout bracket card (use with optional knockoutStage)'),
-        knockoutStage: z
-          .enum(['R32', 'R16', 'QF', 'SF', '3P', 'F'])
-          .optional()
-          .describe('Filter the bracket card to one round'),
-        date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
-        live: z.boolean().optional().describe('Snapshot of matches in play right now'),
-        style: z
-          .enum(['social', 'compact'])
-          .optional()
-          .describe('social (default, full card) or compact (one line per match)'),
-        includeHashtag: z.boolean().optional().describe('Include the #VibingLaVidaLoca tag (default true)'),
-        includeInstallLine: z.boolean().optional().describe('Include the "Try it: …" run cue (default true)'),
-        includeMarkets: z
-          .boolean()
-          .optional()
-          .describe('Include the reliable market line when available (default true)'),
-        ...commonArgs,
-      },
-      // Read-only; may reach the live/market data providers (live/today/match).
-      annotations: { readOnlyHint: true, openWorldHint: true },
-      outputSchema: shareOut,
-    },
-    async (args) => toContent(await toolGetShareSnippet(withRequestLang(args))),
-  );
-
-  server.registerTool(
     'get_team',
     {
       title: 'Resolve a team',
       description:
-        "The World Cup roster: resolve a nation name or 3-letter code to its FIFA code, flag, and group. Fuzzy and forgiving: accepts \"Mexico\", \"mex\", \"USA\", \"DR Congo\", \"Türkiye\"/\"Turkey\", \"Holland\", etc. Useful for the 3-letter code get_market_signal needs. It knows no clubs: get_next_fixture and get_share_snippet resolve a club's name themselves. Returns the single confident match (team), plus candidates (matches) when the query is ambiguous (e.g. \"south\" → South Africa, South Korea). Offline: reads the bundled roster, never the network.",
+        "The World Cup roster: resolve a nation name or 3-letter code to its FIFA code, flag, and group. Fuzzy and forgiving: accepts \"Mexico\", \"mex\", \"USA\", \"DR Congo\", \"Türkiye\"/\"Turkey\", \"Holland\", etc. Useful for the 3-letter code get_market_signal needs. It knows no clubs: get_next_fixture resolves a club's name itself. Returns the single confident match (team), plus candidates (matches) when the query is ambiguous (e.g. \"south\" → South Africa, South Korea). Offline: reads the bundled roster, never the network.",
       inputSchema: {
         query: z.string().describe('Team name or 3-letter code, e.g. "Mexico", "MEX", "DR Congo"'),
       },

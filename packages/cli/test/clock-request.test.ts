@@ -23,7 +23,7 @@ import {
   valid,
 } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdFollow, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdShare, cmdToday } from '../src/commands';
+import { cmdFollow, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdToday } from '../src/commands';
 import { type CliConfig, resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import { described } from './config-of';
@@ -105,16 +105,6 @@ describe("the CLI's other edges take the adapter's read clock too (no context cl
 
   it("live: the window read is the adapter clock's", async () => {
     await cmdLive(ctx(feed([IN_PLAY])));
-    expect(text()).toContain('Liverpool');
-  });
-
-  it("share live: the window read is the adapter clock's", async () => {
-    await cmdShare('live', undefined, {}, ctx(feed([IN_PLAY])));
-    expect(text()).toContain('Liverpool');
-  });
-
-  it("share with no date: the adapter clock's day is the card's", async () => {
-    await cmdShare(undefined, undefined, {}, ctx(feed([ON_THE_DAY])));
     expect(text()).toContain('Liverpool');
   });
 });
@@ -280,11 +270,6 @@ describe("the market gates take the adapter's read clock (no context clock)", ()
 
   it("match <id>: the record and its market line on the adapter clock", async () => {
     await cmdMatch(fixture.id, wcCtx());
-    expect(text()).toContain('56%');
-  });
-
-  it("share with no date: the adapter clock's day, and its fixture's market block", async () => {
-    await cmdShare(undefined, undefined, {}, wcCtx());
     expect(text()).toContain('56%');
   });
 });

@@ -12,14 +12,13 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { FakeMarketProvider, SUPPORTED } from '@claudinho/core';
+import { SUPPORTED } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer, INSTRUCTIONS } from '../src/server';
 import {
   resolveAdapter,
   toolGetBracket,
   toolGetLive,
-  toolGetShareSnippet,
   toolListCompetitions,
 } from '../src/tools';
 
@@ -139,13 +138,6 @@ describe('the request decides', () => {
     expect((r.data as Rec).competition).toMatchObject({ slug: 'eng.1', chosenBy: 'flag' });
   });
 
-  it('a card is said for the request\'s competition: its key, its title and its cue (the adapter serves the same one)', async () => {
-    const r = await toolGetShareSnippet({ live: true, competition: 'serie-a', adapter: adapterFor('ita.1'), marketProvider: new FakeMarketProvider(), now: NOW });
-    expect((r.data as Rec).competition).toMatchObject({ slug: 'ita.1', alias: 'serie-a' });
-    expect(r.text.split('\n')[0]).toBe('Live match pulse · Serie A');
-    expect(r.text).toContain('npx @claudinho/cli --competition serie-a live');
-  });
-
   it('the mode line speaks the reader\'s language', async () => {
     const r = await toolGetLive({ competition: 'premier-league', lang: 'es', adapter: adapterFor('eng.1'), now: NOW });
     expect(r.text.split('\n')[0]).toBe('Premier League · desde la solicitud');
@@ -172,8 +164,6 @@ describe('every branch of a competition-answering tool carries the key', () => {
     const r = await toolGetBracket({ stage: 'X', competition: 'world-cup', adapter: adapterFor('fifa.world') });
     expect(r.text.split('\n')[0]).toBe('World Cup · from the request');
     expect((r.data as Rec).competition).toMatchObject({ slug: 'fifa.world' });
-    const s = await toolGetShareSnippet({ bracket: true, knockoutStage: 'X', competition: 'world-cup', adapter: adapterFor('fifa.world') });
-    expect((s.data as Rec).competition).toMatchObject({ slug: 'fifa.world' });
   });
 });
 

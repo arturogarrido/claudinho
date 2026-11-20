@@ -63,7 +63,7 @@ async function feed(input: unknown): Promise<Response> {
 
 // One row per answer kind: every tool that takes `lang`, on the World Cup and, where the path differs, on a club
 // competition. The competition is passed, so every competition-answering text opens with the mode line "· from
-// the request", localized; the share row is the bracket card, the one card localized whole.
+// the request", localized.
 const ROWS: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['get_today', { competition: 'world-cup', date: '2026-06-11', tz: 'UTC' }],
   ['get_today', { competition: 'premier-league', date: '2026-06-12', tz: 'UTC' }],
@@ -75,7 +75,6 @@ const ROWS: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['get_next_fixture', { competition: 'world-cup', team: 'MEX', tz: 'UTC' }],
   ['get_next_fixture', { competition: 'premier-league', team: 'Arsenal', tz: 'UTC' }],
   ['get_market_signal', { competition: 'world-cup', team: 'MEX', tz: 'UTC' }],
-  ['get_share_snippet', { competition: 'world-cup', bracket: true, tz: 'UTC' }],
   ['list_competitions', { competition: 'premier-league' }],
 ];
 
@@ -136,7 +135,7 @@ describe('the rows cover every tool that takes lang', () => {
     const takesLang = tools.filter((t) => 'lang' in ((t.inputSchema as { properties?: Record<string, unknown> }).properties ?? {})).map((t) => t.name);
     expect([...new Set(ROWS.map(([name]) => name))].sort()).toEqual([...takesLang].sort());
     expect(takesLang).not.toContain('get_team');
-    expect(takesLang).toHaveLength(9);
+    expect(takesLang).toHaveLength(8);
   });
 
   it("the lang argument's description says the server's CLAUDINHO_LANG is the default", async () => {
@@ -188,7 +187,6 @@ describe("a call with no lang answers in the server's CLAUDINHO_LANG", () => {
 describe('a call that names its lang decides', () => {
   const PRECEDENCE: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
     ['get_today', { competition: 'world-cup', date: '2026-06-11', tz: 'UTC' }],
-    ['get_share_snippet', { competition: 'world-cup', bracket: true, tz: 'UTC' }],
     ['list_competitions', { competition: 'premier-league' }],
   ];
   for (const [name, args] of PRECEDENCE) {

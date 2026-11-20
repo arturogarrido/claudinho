@@ -87,7 +87,6 @@ claudinho next [TEAM]       # a team's next match and a countdown; TEAM is a nam
 claudinho table [KEY]       # standings (default: every table); KEY is a group letter, or A1, A-B, LEAGUE
 claudinho match <id>        # one match, with its goals and cards
 claudinho bracket [STAGE]   # the knockout bracket, World Cup only (R32, R16, QF, SF, 3P, F); --tree for an ASCII tree
-claudinho share [target]    # a plain-text card to paste: today | live | <DATE> | <id> | next [TEAM] | table [KEY] | bracket [STAGE]
 claudinho markets [target]  # World Cup prediction-market odds: today | <DATE> | <id> | next [TEAM]
 claudinho team <query>      # a World Cup nation's name or code to its FIFA code, flag and group (team "DR Congo")
 claudinho prompt            # one compact status line (for a statusline, tmux or Starship)
@@ -112,7 +111,6 @@ claudinho today sat                              # Saturday's matches (also tomo
 claudinho today --tz America/Mexico_City --lang es
 claudinho --competition liga-mx table            # another competition, for one command
 claudinho live --json | jq '.matches[].status'
-claudinho share next --copy                      # a card for the group chat, on your clipboard
 ```
 
 ### In a club competition
@@ -153,9 +151,9 @@ the text prints), `rows` (the same rows as styled parts with their roles, for a 
 
 ### When the data is not whole
 
-When the provider sends a record Claudinho cannot read, `today`, `live`, `next`, `match`, `bracket`,
-`markets` and their share cards say their data may be incomplete. `today` and `live` say it after
-their list; the others, and every share card, before what they show. With
+When the provider sends a record Claudinho cannot read, `today`, `live`, `next`, `match`, `bracket`
+and `markets` say their data may be incomplete. `today` and `live` say it after
+their list; the others before what they show. With
 `--json` they carry `partial` (with `omitted`, the count of records left out, when it is known). An
 empty answer then means nothing was read, not that nothing exists: no next match does not mean a
 team is out.
@@ -176,19 +174,18 @@ and the list. With none of the three, a command that answers for a competition s
 `⚽ claudinho follow`, and the hook stays silent.
 
 `today`, `live`, `next`, `match`, `table`, `bracket` and `markets` name their competition near the
-top (`Premier League · from the command line`), and in `--json` as `competition`. A share card names
-it in its title, and `share --json` carries `competition` too. `team` reads the World Cup's nations
+top (`Premier League · from the command line`), and in `--json` as `competition`. `team` reads the World Cup's nations
 and carries no `competition`; it is refused when `--competition` or `CLAUDINHO_COMPETITION` chooses
 another competition.
 
 **Your team.** `claudinho follow <alias> --team <name>` pins a team in that competition. When you
-name no team and `CLAUDINHO_TEAM` is not set, it is the team `next`, `share next` and `markets next`
+name no team and `CLAUDINHO_TEAM` is not set, it is the team `next` and `markets next`
 answer for, and its match comes first on the statusline and in the hook. A pin belongs to its
 competition and never applies to another, whatever chose the competition. Between two seasons
 ("between editions") `follow --team` saves nothing: pin your team once the next season has started.
 A club with no match in the next 14 days can still be pinned.
 
-**`CLAUDINHO_TEAM`** replaces the pin while it is set. `next`, `share next` and `markets next` take it
+**`CLAUDINHO_TEAM`** replaces the pin while it is set. `next` and `markets next` take it
 as a name or a code. The statusline and the hook take a code (`ARS`); on the World Cup a nation's
 name works too (`mexico`). Off the World Cup a club's name there puts no team first, and the pin is
 not used either.
@@ -232,7 +229,7 @@ choice; delete the cache folder yourself after `npm rm -g @claudinho/cli`.
 | `--no-color` | no ANSI color (also `NO_COLOR`; off automatically when piped) |
 | `-c, --competition <alias\|slug>` | the competition for this command (see [Choosing a competition](#choosing-a-competition)) |
 | `--flavor <level>` | commentary: `full` (default), `subtle` or `off` (also `CLAUDINHO_FLAVOR`) |
-| `--no-markets` | hide World Cup market odds in `today`, `match` and share cards (also `CLAUDINHO_MARKETS=off`) |
+| `--no-markets` | hide World Cup market odds in `today` and `match` (also `CLAUDINHO_MARKETS=off`) |
 | `--source <name>` | the live data provider (advanced) |
 
 Team codes: a nation's is FIFA's 3 letters (`MEX`, `BRA`, `ENG`); a club's is the provider's
@@ -252,64 +249,13 @@ which are the text's own rows.
 - `--flavor subtle`: goals, full time, draws and the rally cries only
 - `--flavor off`: just the facts
 
-## Shareable cards
-
-`claudinho share` prints a plain-text card you can paste into a chat, a post or an issue:
-
-```bash
-claudinho share                   # today's matches
-claudinho share live              # the matches in play
-claudinho share next              # your team's next match (or next <TEAM>)
-claudinho share table             # the standings (or table <KEY> for one table)
-claudinho share 401915407         # one match by id
-claudinho share bracket R16       # the World Cup bracket, or one round (R32, R16, QF, SF, 3P, F)
-claudinho share next --copy       # also copy it to the clipboard
-```
-
-<!-- DEMO CARD: verbatim `claudinho --tz UTC share 401915407` (a Champions League match from Oct 14,
-     2026), with the Champions League followed. Never hand-edit. -->
-```text
-Match pulse · Champions League
-
-Manchester City 2–4 Paris Saint-Germain · FT
-Etihad Stadium, Manchester, England
-League phase
-
-Live data: ESPN
-#VibingLaVidaLoca · Independent fan project · Not affiliated with FIFA, any confederation, league or club, or Anthropic.
-Try it: npx @claudinho/cli --competition champions-league match 401915407
-```
-
-This card is a capture from Oct 14, 2026. Off the World Cup, `share <id>` finds a match from
-yesterday to 14 days ahead, so run it with a current id (`claudinho today --json` lists each
-match's `id`).
-
-A card has no color codes, so it pastes cleanly anywhere, and always carries the non-affiliation
-sentence. `--copy` uses `pbcopy` on macOS, Windows' own `clip.exe` (by its path under the system folder) on Windows, and elsewhere the first of `wl-copy`,
-`xclip` and `xsel` that works. When none works, the card is still printed: copy it from the terminal.
-
-| Flag | Description |
-|---|---|
-| `--style <social\|compact>` | `social` (default) is the full card; `compact` is one line per match |
-| `--copy` | also copy the card to the clipboard |
-| `--no-hashtag` | leave out the `#VibingLaVidaLoca` tag |
-| `--no-install-line` | leave out the `Try it: …` line |
-
-`share … --json` prints the card (`kind`, `snippet`) with its facts. A card for a day, live
-matches, a match or a team's next match adds `matches`, `marketSignals` and `marketComplete`; a
-table card adds `tables`, and a bracket card the bracket's `view`. When the market read did not
-finish, the card says so and `--json` carries `marketComplete: false`: that is not "no market".
-
-Want an image? A screenshot of the card works, or a tool such as
-`freeze --execute "claudinho share next" -o card.png` (charmbracelet/freeze).
-
 ## Prediction-market odds (World Cup)
 
 For World Cup matches, `claudinho markets` shows a "who's favored" line: the percentages Polymarket's
 public market data implies, for a date, a match, or a team's current match (one whose kickoff time
 passed less than about three and a half hours ago and that the feed has not marked finished) or,
-with none, its next. A short version appears under `today`,
-`match` and on the share cards for a date, a match or a team's next match, when a reliable market
+with none, its next. A short version appears under `today`
+and `match` when a reliable market
 exists. **Informational only, not betting
 advice:** no trading, no links. A match with no clean market, and a finished match, shows nothing.
 With `--json`, `markets` carries `complete`, and `today` and `match` carry `marketComplete`. `false`
@@ -335,7 +281,7 @@ The statusline is English in every language.
 - `CLAUDINHO_TEAM=ARS`: that team's match first, the others counted (`+N`). Give a code; on the World Cup a nation's name works too. A pinned team does the same when this is not set.
 - `CLAUDINHO_MAX=2`: show at most this many live matches when your team is not in play (default and maximum: 8); the rest are counted.
 - `CLAUDINHO_COMPACT=0`: show 3-letter codes beside the flags.
-- `CLAUDINHO_FLAGS=off`: no flag emoji: 3-letter codes on the statusline and in `bracket`, plain names in `today`, `live`, `next`, `match`, `table`, `team` and the hook (automatic in Warp, which cannot draw them). Share cards keep their flags. `CLAUDINHO_FLAGS=on` keeps the flags.
+- `CLAUDINHO_FLAGS=off`: no flag emoji: 3-letter codes on the statusline and in `bracket`, plain names in `today`, `live`, `next`, `match`, `table`, `team` and the hook (automatic in Warp, which cannot draw them). `CLAUDINHO_FLAGS=on` keeps the flags.
 
 The same `claudinho prompt` works in tmux (`set -g status-right '#(claudinho prompt)'`) and as a
 Starship custom command.

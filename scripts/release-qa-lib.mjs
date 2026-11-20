@@ -22,10 +22,11 @@
  *     prints says the environment chose the competition ({@link clubPass}: the
  *     run is then one pass of that competition), and its renders are judged
  *     here: a between-editions league is a VALID render, an outage is reported
- *     as one and proves no populated render ({@link clubCardVerdict},
- *     {@link ptTableVerdict}), the card carries the one disclaimer whatever it
- *     answered ({@link cardCarriesDisclaimer}), and the seeded prompt renders
- *     the seed and starts no refresher ({@link promptVerdict}).
+ *     as one and proves no populated render ({@link clubNextVerdict},
+ *     {@link ptTableVerdict}), the club's `next` answer carries the one
+ *     disclaimer whatever it answered ({@link textCarriesDisclaimer}), and the
+ *     seeded prompt renders the seed and starts no refresher
+ *     ({@link promptVerdict}).
  *
  * The script calls this file's command line:
  *   node scripts/release-qa-lib.mjs label  < json    the header's competition, as the CLI resolved it
@@ -35,9 +36,8 @@
  *   node scripts/release-qa-lib.mjs club < json      run | skip:<why>      (the bundle pass's header JSON)
  *   node scripts/release-qa-lib.mjs club-header < json                     (the club config's `follow --json`)
  *   node scripts/release-qa-lib.mjs club-followed < json  ok | fail:<why>
- *   node scripts/release-qa-lib.mjs card < json      ok | between | outage | fail | broken, :<detail>  (`share next --json`)
- *   node scripts/release-qa-lib.mjs card-disclaimer < json  ok | fail:<why>
- *   node scripts/release-qa-lib.mjs snippet < json   the card's text, for the eyeball
+ *   node scripts/release-qa-lib.mjs next <text> < json  ok | between | outage | fail | broken, :<detail>  (`next --json`, and its text)
+ *   node scripts/release-qa-lib.mjs next-disclaimer < text  ok | fail:<why>
  *   node scripts/release-qa-lib.mjs pt-table < text  ok | skip | fail | broken, :<detail>
  *   node scripts/release-qa-lib.mjs prompt <spawns> < out   ok | fail | broken, :<detail>
  */
@@ -144,122 +144,149 @@ export function clubFollowed(followJson) {
   return { kind: 'fail', detail: `the club config resolved ${slug ?? 'no competition'}, not ${CLUB.slug}` };
 }
 
-/** A share card's `--json` answer, or undefined when it carries no snippet. */
-function cardOf(shareJson) {
+/** A plain object (not null, not a list). */
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** `next --json`'s answer, or undefined when it is not a JSON object. */
+function answerOf(nextJson) {
   try {
-    const card = JSON.parse(shareJson);
-    return card && typeof card.snippet === 'string' && card.snippet !== '' ? card : undefined;
+    const answer = JSON.parse(nextJson);
+    return isObject(answer) ? answer : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** The replacing verdicts a club card can state about the club or the competition: each is a failed render here. */
+/** The replacing verdicts `next` can state about the club or the competition: each is a failed render here. */
 const REPLACING = ['unknownTeam', 'rosterIncomplete', 'noCompetition', 'unsupported', 'inapplicable'];
 
-/** What is wrong with a card that is not this club render's next card, or undefined when nothing is. */
-function notTheClubCard(card) {
-  if (card.kind !== 'next') return `the card's kind is ${JSON.stringify(card.kind ?? null)}, not "next"`;
-  const slug = card.competition?.slug;
-  if (slug !== CLUB.slug) return `the card's competition is ${typeof slug === 'string' ? slug : 'not stated'}, not ${CLUB.slug}`;
-  if (!Array.isArray(card.matches)) return "the card's matches is not a list";
-  const team = card.team;
-  const named = (typeof team === 'string' && team !== '') || (team !== null && typeof team === 'object' && typeof team.name === 'string');
-  if (!named) return 'the card names no team (neither a name nor a club with a name)';
+/** What is wrong with an answer that is not this club render's `next`, or undefined when nothing is. */
+function notTheClubAnswer(answer) {
+  const slug = answer.competition?.slug;
+  if (slug !== CLUB.slug) return `the answer's competition is ${typeof slug === 'string' ? slug : 'not stated'}, not ${CLUB.slug}`;
+  if (answer.fixture !== null && !isObject(answer.fixture)) return "the answer's fixture is neither null nor a match";
+  const team = answer.team;
+  const named = (typeof team === 'string' && team !== '') || (isObject(team) && typeof team.name === 'string');
+  if (!named) return 'the answer names no team (neither a name nor a club with a name)';
   return undefined;
 }
 
 /**
- * What the club card answered (`share next <team> --json`), and whether its
- * SNIPPET says so: a structured field is what the card states, the snippet is
- * what a reader sees, and the render passes only when the second says the
- * first. The sentences are core's own (`core`: `verdictNotice`,
- * `verdictQualifiers`, `nextHorizonSentence`, `nextNoneReadSentence`, handed
- * in), asked for and looked for in the snippet, never spelled here. They are
- * asked for in ENGLISH because the script renders the card in English
- * (`share next Arsenal --lang en`: the flag wins over CLAUDINHO_LANG and LANG,
- * so the operator's language cannot fail a valid card). The first row that
- * applies answers:
- *   - no JSON, or no snippet: `broken`;
- *   - not this render's next card (its kind, its competition, its matches, its
- *     team): `broken`, naming what is wrong; a `betweenEditions` with no date:
+ * What the club's `next` answered (`next <team> --json`), and whether its TEXT
+ * (`next <team>`) says so: a structured field is what the answer states, the
+ * text is what a reader sees, and the render passes only when the second says
+ * the first (they are two requests: a feed change between them that the text
+ * shows fails this run, which is run again). The sentences are core's own
+ * (`core`: `verdictNotice`, `verdictQualifiers`, `nextHorizonSentence`,
+ * `nextNoneReadSentence`, `t`, handed in), asked for and looked for in the
+ * text, never spelled here. They are
+ * asked for in ENGLISH because the script renders both in English (`next
+ * Arsenal --lang en`: the flag wins over CLAUDINHO_LANG and LANG, so the
+ * operator's language cannot fail a valid answer). The first row that applies
+ * answers:
+ *   - no JSON object, or no text: `broken`;
+ *   - not this render's answer (its competition, its fixture, its team):
+ *     `broken`, naming what is wrong; a `betweenEditions` with no date:
  *     `broken`;
  *   - candidates, or a replacing verdict about the club or the competition:
  *     `fail` (the club is in the table: a render that says otherwise failed);
- *   - between editions: `between` (a VALID render) when the snippet says the
+ *   - between editions: `between` (a VALID render) when the text says the
  *     verdict's sentence, else `fail`;
  *   - an outage: `outage` (the shell reports it as one; it proves no
- *     populated card);
- *   - a fixture: `ok` when the snippet names both clubs and, on a read that
- *     was not whole, says so; else `fail`;
- *   - no fixture, a read that was not whole: `ok` when the snippet says the
+ *     populated render) when the text says core's outage sentence, else
+ *     `fail`;
+ *   - a fixture with a side that has no name: `broken`;
+ *   - a fixture: `ok` when one line of the text holds both clubs' names
+ *     and the text says the read was not whole when, and only when, the
+ *     answer does; else `fail` (a text whose own read was not whole but that
+ *     prints no qualifier, beside a whole JSON answer, is not detected);
+ *   - no fixture, a read that was not whole: `ok` when the text says the
  *     none-read sentence AND every qualifier sentence, else `fail`;
  *   - no fixture, a whole read: a horizon with no span (`days` not a positive
- *     whole number) is `broken`; `ok` when the snippet says the horizon
- *     sentence, else `fail`; an empty card with neither verdict is `broken`
- *     (no next card has it).
+ *     whole number) is `broken`; `ok` when the text says the horizon
+ *     sentence, else `fail`; an answer with neither is `broken` (`next` off
+ *     the bundle gives none).
  */
-export function clubCardVerdict(shareJson, core) {
-  const card = cardOf(shareJson);
-  if (!card) return { kind: 'broken', detail: 'the share command answered no card' };
-  const wrong = notTheClubCard(card);
+export function clubNextVerdict(nextJson, nextText, core) {
+  const answer = answerOf(nextJson);
+  if (!answer) return { kind: 'broken', detail: 'the next command answered no JSON' };
+  const text = typeof nextText === 'string' ? nextText : '';
+  if (text === '') return { kind: 'broken', detail: 'the next command printed nothing' };
+  const wrong = notTheClubAnswer(answer);
   if (wrong) return { kind: 'broken', detail: wrong };
-  const between = card.betweenEditions;
+  const between = answer.betweenEditions;
   const statesBetween = between !== undefined;
-  if (statesBetween && !(between !== null && typeof between === 'object' && typeof between.ended === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(between.ended))) {
+  if (statesBetween && !(isObject(between) && typeof between.ended === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(between.ended))) {
     return { kind: 'broken', detail: 'betweenEditions states no date' };
   }
-  if (Array.isArray(card.candidates) && card.candidates.length > 0) {
-    return { kind: 'fail', detail: `"${CLUB.team}" resolved to ${card.candidates.length} clubs; the club render asks one name that must resolve` };
+  if (Array.isArray(answer.candidates) && answer.candidates.length > 0) {
+    return { kind: 'fail', detail: `"${CLUB.team}" resolved to ${answer.candidates.length} clubs; the club render asks one name that must resolve` };
   }
   for (const key of REPLACING) {
-    if (card[key] === true) return { kind: 'fail', detail: `the card answered ${key} for ${CLUB.team}` };
+    if (answer[key] === true) return { kind: 'fail', detail: `next answered ${key} for ${CLUB.team}` };
   }
-  // The card as the sentence builders take a result: the query asked, the resolved club (when the card carries one), its fixture.
-  const result = {
-    ...card,
-    query: CLUB.team,
-    team: card.team !== null && typeof card.team === 'object' ? card.team : undefined,
-    fixture: card.matches[0],
-  };
-  const says = (sentence) => typeof sentence === 'string' && sentence !== '' && card.snippet.includes(sentence);
+  // The answer as the sentence builders take a result: the query asked, the
+  // resolved club (when the answer carries one), its fixture (when it has one).
+  const { team, fixture, ...rest } = answer;
+  const result = { ...rest, query: CLUB.team, ...(isObject(team) ? { team } : {}), ...(isObject(fixture) ? { fixture } : {}) };
+  const says = (sentence) => typeof sentence === 'string' && sentence !== '' && text.includes(sentence);
+  const saysEvery = (sentences) => sentences.length > 0 && sentences.every(says);
   if (statesBetween) {
-    if (!says(core.verdictNotice(result, 'en'))) return { kind: 'fail', detail: "the card's betweenEditions is not said in its snippet" };
-    return { kind: 'between', detail: `the edition ended ${between.ended}, and the card says so` };
+    if (!says(core.verdictNotice(result, 'en'))) return { kind: 'fail', detail: 'betweenEditions is not said in the text' };
+    return { kind: 'between', detail: `the edition ended ${between.ended}, and the text says so` };
   }
-  if (card.degraded === true) return { kind: 'outage', detail: 'the provider could not be reached, and the card says so' };
-  const partial = typeof card.partial === 'object' && card.partial !== null;
-  if (card.matches.length > 0) {
-    const fixture = card.matches[0];
-    if (!says(fixture?.home?.name) || !says(fixture?.away?.name)) return { kind: 'fail', detail: 'the fixture is not in the snippet' };
+  if (answer.degraded === true) {
+    if (!says(core.t('en', 'live.degraded'))) return { kind: 'fail', detail: 'the outage is not said in the text' };
+    return { kind: 'outage', detail: 'the provider could not be reached' };
+  }
+  const partial = isObject(answer.partial);
+  if (isObject(fixture)) {
+    // A side with no name is the answer's own defect, whatever the text says.
+    const sides = [fixture.home, fixture.away];
+    if (!sides.every((s) => isObject(s) && typeof s.name === 'string' && s.name !== '')) {
+      return { kind: 'broken', detail: 'the fixture names no club on one side' };
+    }
+    // Both NAMES on one line, the fixture's row: the header names the club asked whatever the fixture, and a code is no name.
+    const names = sides.map((s) => s.name);
+    if (!text.split('\n').some((line) => names.every((n) => line.includes(n)))) {
+      return { kind: 'fail', detail: 'the fixture is not in the text' };
+    }
     if (partial) {
-      const qualifiers = core.verdictQualifiers(result, 'en');
-      if (qualifiers.length === 0 || !qualifiers.every(says)) return { kind: 'fail', detail: "the card's partial read is not said in its snippet" };
-      return { kind: 'ok', detail: 'a fixture, the read was not whole and the card says so' };
+      if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'fail', detail: 'the partial read is not said in the text' };
+      return { kind: 'ok', detail: 'a fixture, the read was not whole and the text says so' };
+    }
+    // Core's qualifier for a read that was not whole, as a line of its own: uncounted,
+    // one record, or any count (built with a sentinel count, matched with digits).
+    const sentinel = 987654321;
+    const escaped = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const lines = text.split('\n').map((line) => line.trim());
+    const ownLine = (sentence) => typeof sentence === 'string' && sentence !== '' && lines.includes(sentence);
+    const counted = core.verdictQualifiers({ partial: { omitted: sentinel } }, 'en').map((s) => s.split(String(sentinel)));
+    if (
+      [{}, { omitted: 1 }].some((p) => core.verdictQualifiers({ partial: p }, 'en').some(ownLine)) ||
+      counted.some((parts) => parts.length === 2 && lines.some((line) => new RegExp(`^${escaped(parts[0])}\\d+${escaped(parts[1])}$`).test(line)))
+    ) {
+      return { kind: 'fail', detail: 'the text says the read was not whole and the answer does not' };
     }
     return { kind: 'ok', detail: 'a fixture' };
   }
   if (partial) {
-    if (!says(core.nextNoneReadSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: "the card's none-read sentence is not said in its snippet" };
-    const qualifiers = core.verdictQualifiers(result, 'en');
-    if (qualifiers.length === 0 || !qualifiers.every(says)) return { kind: 'fail', detail: "the card's partial read is not said in its snippet" };
+    if (!says(core.nextNoneReadSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: 'the none-read sentence is not said in the text' };
+    if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'fail', detail: 'the partial read is not said in the text' };
     return { kind: 'ok', detail: 'no fixture READ in the span (the read was not whole), its sentence shown' };
   }
-  if (card.horizon !== undefined) {
-    const days = card.horizon?.days;
-    if (card.horizon === null || typeof card.horizon !== 'object' || !(Number.isInteger(days) && days > 0)) {
-      return { kind: 'broken', detail: 'horizon states no span' };
-    }
-    if (!says(core.nextHorizonSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: 'the horizon is not said in its snippet' };
+  if (answer.horizon !== undefined) {
+    const days = answer.horizon?.days;
+    if (!isObject(answer.horizon) || !(Number.isInteger(days) && days > 0)) return { kind: 'broken', detail: 'horizon states no span' };
+    if (!says(core.nextHorizonSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: 'the horizon is not said in its text' };
     return { kind: 'ok', detail: 'no fixture in the span, its sentence shown' };
   }
-  return { kind: 'broken', detail: 'an empty card with no horizon and no partial verdict is not a shape the next card has' };
+  return { kind: 'broken', detail: 'no fixture, no horizon and no partial verdict is not an answer next gives off the bundle' };
 }
 
-/** The card carries the one disclaimer, whatever it answered. */
-export function cardCarriesDisclaimer(shareJson, disclaimer) {
-  const card = cardOf(shareJson);
-  return Boolean(card) && typeof disclaimer === 'string' && disclaimer !== '' && card.snippet.includes(disclaimer);
+/** A text carries the one disclaimer (both non-empty), whatever it answered. */
+export function textCarriesDisclaimer(text, disclaimer) {
+  return typeof text === 'string' && text !== '' && typeof disclaimer === 'string' && disclaimer !== '' && text.includes(disclaimer);
 }
 
 /**
@@ -326,13 +353,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.stdout.write(clubHeader(stdin()));
   } else if (question === 'club-followed') {
     process.stdout.write(say(clubFollowed(stdin())));
-  } else if (question === 'card') {
-    // The sentences are core's: its builders read from the built package, as `card-disclaimer` reads the disclaimer.
+  } else if (question === 'next') {
+    // The JSON on standard input, the text as the argument. The sentences are
+    // core's: its builders read from the built package, as `next-disclaimer`
+    // reads the disclaimer.
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const dist = resolve(root, 'packages', 'core', 'dist', 'index.js');
     const core = existsSync(dist) ? await import(pathToFileURL(dist).href) : undefined;
-    process.stdout.write(core === undefined ? 'fail:core dist not built — run pnpm -r build' : say(clubCardVerdict(stdin(), core)));
-  } else if (question === 'card-disclaimer') {
+    process.stdout.write(core === undefined ? 'fail:core dist not built — run pnpm -r build' : say(clubNextVerdict(stdin(), arg ?? '', core)));
+  } else if (question === 'next-disclaimer') {
     // The one disclaimer is core's: read from the built package, as the gate reads the bundled competition.
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const dist = resolve(root, 'packages', 'core', 'dist', 'index.js');
@@ -340,12 +369,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.stdout.write(
       disclaimer === undefined
         ? 'fail:core dist not built — run pnpm -r build'
-        : cardCarriesDisclaimer(stdin(), disclaimer)
+        : textCarriesDisclaimer(stdin(), disclaimer)
           ? 'ok'
-          : 'fail:the club card does not carry the disclaimer',
+          : 'fail:the club answer does not carry the disclaimer',
     );
-  } else if (question === 'snippet') {
-    process.stdout.write(cardOf(stdin())?.snippet ?? '(no card)');
   } else if (question === 'pt-table') {
     process.stdout.write(say(ptTableVerdict(stdin())));
   } else if (question === 'prompt') {
@@ -353,7 +380,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.stdout.write(say(promptVerdict(stdin(), arg ?? '', SEEDED_CLUB_MATCH)));
   } else {
     process.stderr.write(
-      'usage: release-qa-lib.mjs label | slug | gate <slug> | verdict | club | club-header | club-followed | card | card-disclaimer | snippet | pt-table | prompt <spawns>\n',
+      'usage: release-qa-lib.mjs label | slug | gate <slug> | verdict | club | club-header | club-followed | next <text> | next-disclaimer | pt-table | prompt <spawns>\n',
     );
     process.exit(2);
   }

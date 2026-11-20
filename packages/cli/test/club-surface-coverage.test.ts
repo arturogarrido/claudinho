@@ -11,7 +11,7 @@ import { type CacheState, writeState } from '../src/cache';
 // entry with `_refresh` as its argument), which the CI runner on Windows
 // waited on until its limit. The spawn is someone else's test.
 vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
-import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt, cmdShare, cmdTable, cmdToday, cmdVibe } from '../src/commands';
+import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt, cmdTable, cmdToday, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -132,21 +132,6 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     expect(text()).not.toMatch(WC);
   });
 
-  it('`share next`, `share bracket` and `share <World Cup id>` never paste the skeleton', async () => {
-    const said = [
-      [['next', 'ARS'], 'roster could not be read whole'],
-      [['bracket', undefined], 'This competition has no bracket.'],
-      [['760415', undefined], 'may be incomplete'],
-    ] as const;
-    for (const [args, sentence] of said) {
-      writes = [];
-      await cmdShare(args[0], args[1], {}, ctx());
-      expect(text(), args[0]).toContain(sentence);
-      expect(text(), args[0]).not.toContain(NOTICE);
-      expect(text(), args[0]).not.toMatch(WC);
-    }
-  });
-
   it('`markets next --json` and `markets <World Cup id> --json` carry the marker', async () => {
     // Review P2 on #129: the text branches said "not available" while the JSON
     // branches emitted `complete:true, signal:null` — indistinguishable from a
@@ -158,21 +143,21 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     }
   });
 
-  it('`share next --json`, `share <World Cup id> --json` and `share bracket --json` carry what the snippet says', async () => {
-    // The sibling of the market P2: the snippet text warns, the structured
-    // half must say so too (the batch-1 `partial` lesson, same shape).
+  it('`next --json`, `match <World Cup id> --json` and `bracket --json` carry what the text says', async () => {
+    // The sibling of the market P2: the text warns, the structured half must
+    // say so too (the batch-1 `partial` lesson, same shape).
     const said = [
-      [['next', 'ARS'], { degraded: false, source: null, rosterIncomplete: true }],
-      [['760415', undefined], { degraded: false, source: null, partial: {} }],
-      [['bracket', undefined], { degraded: false, source: null, inapplicable: true }],
+      ['next', () => cmdNext('ARS', ctx({ json: true })), { degraded: false, source: null, rosterIncomplete: true }],
+      ['match', () => cmdMatch('760415', ctx({ json: true })), { degraded: false, source: null, partial: {} }],
+      ['bracket', () => cmdBracket(undefined, {}, ctx({ json: true })), { degraded: false, source: null, inapplicable: true }],
     ] as const;
-    for (const [args, keys] of said) {
+    for (const [name, run, keys] of said) {
       writes = [];
-      await cmdShare(args[0], args[1], {}, ctx({ json: true }));
-      const data = JSON.parse(text()) as { snippet: string };
-      expect(data, args[0]).toMatchObject(keys);
-      expect('unsupported' in data, args[0]).toBe(false);
-      expect(data.snippet, args[0]).not.toMatch(WC);
+      await run();
+      const data = JSON.parse(text()) as Record<string, unknown>;
+      expect(data, name).toMatchObject(keys);
+      expect('unsupported' in data, name).toBe(false);
+      expect(text(), name).not.toMatch(WC);
     }
   });
 });
@@ -378,44 +363,20 @@ describe('club rendering — the live state (Arsenal 2–1 Chelsea, 50\')', () =
     noFlagKey((j.match as Record<string, unknown>).home, 'match --json');
   });
 
-  it('`share` (date, live, match) in both styles: nothing in the flag\'s place; the stage line says "League"', async () => {
-    for (const style of ['social', 'compact']) {
-      for (const [target, team] of [['2026-10-04', undefined], ['live', undefined], ['800000010', undefined]] as const) {
-        writes = [];
-        await cmdShare(target, team, { style }, clubCtx(LIVE_FEED()));
-        const t = text();
-        expect(t, `${target} ${style}`).toContain(style === 'social' ? 'Arsenal 2–1 Chelsea' : 'ARS 2–1 CHE');
-        noLeak(t, `${target} ${style}`);
-      }
-    }
-    writes = [];
-    await cmdShare('800000010', undefined, { style: 'social' }, clubCtx(LIVE_FEED()));
-    expect(text()).toContain('League');
-    writes = [];
-    await cmdShare('800000010', undefined, {}, clubCtx(LIVE_FEED(), { json: true }));
-    const j = parsedOut();
-    const shared = (j.matches as Array<Record<string, unknown>>)[0];
-    expect(shared?.stage).toBe('REGULAR');
-    noFlagKey(shared?.home, 'share --json');
-    noLeak(j.snippet as string, 'share --json snippet');
-  });
-
-  it('`table` and `share table`: rows by name and code, nothing in the flag\'s place', async () => {
+  it('`table`: rows by name and code, nothing in the flag\'s place', async () => {
     await cmdTable(undefined, clubCtx(LIVE_FEED()));
     const t = text();
     expect(t).toContain('Arsenal');
     expect(t).toContain('Leeds United');
     noLeak(t, 'table');
+    // The team cell is the name after the border's one space: no gap where a flag would go.
+    for (const name of ['Arsenal', 'Chelsea', 'Leeds United']) expect(t, name).toContain(`│ ${name} `);
     writes = [];
     await cmdTable(undefined, clubCtx(LIVE_FEED(), { json: true }));
     const j = parsedOut();
     const rows = (j.tables as Array<{ standings: Array<{ team: unknown }> }>)[0]?.standings;
     expect(rows?.length).toBe(3);
     for (const r of rows ?? []) noFlagKey(r.team, 'table --json row');
-    writes = [];
-    await cmdShare('table', undefined, {}, clubCtx(LIVE_FEED()));
-    expect(text()).toContain('1. ARS');
-    noLeak(text(), 'share table');
   });
 });
 
@@ -439,17 +400,6 @@ describe('club rendering — the scheduled state (Arsenal vs Leeds, Saturday)', 
     await cmdNext('Arsenal', clubCtx(SCHEDULED_FEED(), { lang: 'fr' }));
     expect(text()).toContain('Championnat');
     noLeak(text(), 'next scheduled fr');
-  });
-
-  it('`share next Arsenal` in both styles', async () => {
-    await cmdShare('next', 'Arsenal', { style: 'social' }, clubCtx(SCHEDULED_FEED()));
-    expect(text()).toContain('Arsenal vs Leeds United');
-    expect(text()).toContain('League');
-    noLeak(text(), 'share next social');
-    writes = [];
-    await cmdShare('next', 'Arsenal', { style: 'compact' }, clubCtx(SCHEDULED_FEED()));
-    expect(text()).toContain('ARS vs LEE');
-    noLeak(text(), 'share next compact');
   });
 
   it('a club named like a region gets no flag either (Monaco)', async () => {
@@ -481,7 +431,7 @@ describe('club rendering — the stage grammar reaches the surfaces', () => {
     expect((parsedOut().matches as Array<Record<string, unknown>>)[0]?.stage).toBe('PO');
   });
 
-  it('an unknown round: the provider\'s words on next, match and the cards; `stageLabel` in --json', async () => {
+  it('an unknown round: the provider\'s words on next and match; `stageLabel` in --json', async () => {
     await cmdNext('Arsenal', clubCtx(OTHER()));
     expect(text()).toContain('Qualifying final');
     noLeak(text(), 'other next');
@@ -491,12 +441,6 @@ describe('club rendering — the stage grammar reaches the surfaces', () => {
     writes = [];
     await cmdMatch('800000021', clubCtx(OTHER()));
     expect(text()).toContain('Qualifying final · Emirates Stadium, London');
-    writes = [];
-    await cmdShare('800000021', undefined, { style: 'social' }, clubCtx(OTHER()));
-    expect(text()).toContain('Qualifying final');
-    writes = [];
-    await cmdShare('next', 'Arsenal', { style: 'social' }, clubCtx(OTHER()));
-    expect(text()).toContain('Qualifying final');
     writes = [];
     await cmdMatch('800000021', clubCtx(OTHER(), { json: true }));
     const m = parsedOut().match as Record<string, unknown>;
@@ -521,11 +465,6 @@ describe('club rendering — the stage grammar reaches the surfaces', () => {
     expect(mt).toContain('Emirates Stadium, London');
     expect(mt).not.toMatch(/Group/);
     expect(mt).not.toMatch(/(^|\n)\s*·|·\s*(\n|$)|·\s+·/);
-    writes = [];
-    await cmdShare('800000022', undefined, { style: 'social' }, clubCtx(NO_SLUG()));
-    const card = text();
-    expect(card).not.toMatch(/Group/);
-    expect(card).not.toMatch(/(^|\n)\s*·|·\s*(\n|$)/);
     writes = [];
     await cmdMatch('800000022', clubCtx(NO_SLUG(), { json: true }));
     const m = parsedOut().match as Record<string, unknown>;

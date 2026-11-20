@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdMarkets, cmdNext, cmdShare } from '../src/commands';
+import { cmdMarkets, cmdNext } from '../src/commands';
 import { resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -69,7 +69,6 @@ const ctxOf = (competition?: string, json = false) => {
 };
 const commands: Array<[string, (c: ReturnType<typeof ctxOf>) => Promise<void>]> = [
   ['next', (c) => cmdNext(undefined, c)],
-  ['share next', (c) => cmdShare('next', undefined, {}, c)],
   ['markets next', (c) => cmdMarkets('next', undefined, c)],
 ];
 

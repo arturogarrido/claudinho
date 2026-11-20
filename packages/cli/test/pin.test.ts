@@ -1,6 +1,6 @@
 /**
- * The saved pin on every team-taking surface (0.11 · 2.5b, D2). `next`,
- * `share next` and `markets next` with no argument answer for the saved team
+ * The saved pin on every team-taking surface (0.11 · 2.5b, D2). `next`
+ * and `markets next` with no argument answer for the saved team
  * as a RESOLVED team (never re-resolved through the roster: its fixture by
  * `isTeam`, the id deciding; by code for an id-less pin, the bundle's nations);
  * `CLAUDINHO_TEAM` and an argument win over it; a pin under a flag or an
@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CacheState, writeState } from '../src/cache';
 import type { ScheduleSlice } from '../src/scheduleSlice';
 vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
-import { cmdHook, cmdMarkets, cmdNext, cmdPrompt, cmdShare, cmdVibe, InputError } from '../src/commands';
+import { cmdHook, cmdMarkets, cmdNext, cmdPrompt, cmdVibe, InputError } from '../src/commands';
 import { resolveConfig } from '../src/config';
 import { renderHook } from '../src/hook';
 import { makeT } from '../src/i18n';
@@ -114,12 +114,8 @@ describe('the commands', () => {
     expect(text()).toContain('roster could not be read');
   });
 
-  it('`share next` and `markets next` with no argument take the pin too', async () => {
+  it('`markets next` with no argument takes the pin too', async () => {
     follow('eng.1', ARSENAL);
-    await cmdShare('next', undefined, {}, ctxOf());
-    expect(text()).toContain('Chelsea');
-    expect(text()).toContain('--competition premier-league next');
-    writes = [];
     await cmdMarkets('next', undefined, ctxOf());
     // Off the World Cup the market sidecar is not offered; the command still answers for the pinned team, never "Usage".
     expect(text()).not.toContain('Usage:');

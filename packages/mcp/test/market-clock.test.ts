@@ -17,7 +17,7 @@ import {
   valid,
 } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
-import { toolGetMarketSignal, toolGetMatch, toolGetShareSnippet, toolGetToday } from '../src/tools';
+import { toolGetMarketSignal, toolGetMatch, toolGetToday } from '../src/tools';
 
 const fixture = allFixtures().find(
   (m) => m.status === 'SCHEDULED' && Date.parse(m.kickoff) > Date.parse('2026-06-13T12:00:00Z') && new Date(m.kickoff).getUTCHours() >= 2,
@@ -93,10 +93,5 @@ describe("a market read is judged by the request's clock, the provider's stalene
     const r = await toolGetMarketSignal({ ...common, date: day });
     expect(r.text).toContain('56%');
     expect(r.text).not.toContain('stale');
-  });
-
-  it("get_share_snippet for the day: the card's market block", async () => {
-    const r = await toolGetShareSnippet({ ...common, date: day });
-    expect(r.text).toContain('56%');
   });
 });

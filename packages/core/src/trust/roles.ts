@@ -102,7 +102,7 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
  * included (a control such as a tab or a newline, a format character such as
  * a byte-order mark, a line or paragraph separator, anything invisible):
  * comparing after a trim would hide one at an end, and a newline at the end
- * of an argument splits the run cue it is pasted into. Then an emoji, or a
+ * of an argument splits the line it is printed on. Then an emoji, or a
  * tail past the column bound, which the role would drop, is refused too.
  */
 export function isHumanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): boolean {

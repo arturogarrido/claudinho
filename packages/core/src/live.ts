@@ -30,7 +30,6 @@ import { takeBounded } from './trust/bounded';
 import { agreedSeason } from './trust/season';
 import { isTeam, sealTeam } from './trust/match';
 import { humanLabel } from './trust/roles';
-import { t } from './i18n';
 import type { Pin } from './userConfig';
 import { SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from './span';
 import { type BetweenEditions, partialOfRead } from './verdict';
@@ -570,14 +569,6 @@ export interface MatchByIdResult {
    */
   earlierRecord?: true;
 }
-
-/**
- * The not-live sentence for a match that is the provider's earlier record
- * (`earlierRecord`), as the share card prints it: English (the card's copy),
- * the catalog's sentence (`feed.earlierRecord`, which the CLI and the MCP text
- * print in the reader's language) in parentheses.
- */
-export const EARLIER_RECORD_NOTE = `(${t('en', 'feed.earlierRecord')})`;
 
 /**
  * Extra slack past the static live window for team-query candidate selection:

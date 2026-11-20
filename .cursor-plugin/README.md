@@ -13,13 +13,13 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 | Shipped in plugin | Not shipped (by design) |
 |-------------------|-------------------------|
 | MCP server via `../mcp.json` → `npx -y @claudinho/mcp` | Cursor CLI **statusline** (separate: `@claudinho/cli`) |
-| 10 read-only tools (see below) | **Hook** / score-aware prompt injection (Cursor `beforeSubmitPrompt` unreliable) |
+| 9 read-only tools (see below) | **Hook** / score-aware prompt injection (Cursor `beforeSubmitPrompt` unreliable) |
 | Resources + prompts | Betting links or trade calls |
 
 The server runs with `npx`, so it needs Node.js 22 or later. That is the oldest line it runs on, not a
 security level: run a patched release of the Node 22 or 24 line.
 
-## MCP tools (10)
+## MCP tools (9)
 
 - `get_today`: fixtures for a date (default today), live overlay
 - `get_live`: matches in play now
@@ -28,7 +28,6 @@ security level: run a patched release of the Node 22 or 24 line.
 - `get_bracket`: knockout tree (optional stage filter)
 - `get_next_fixture`: a team's next match, by name or code (a nation, or a club in a club competition)
 - `get_market_signal`: read-only market-implied % (informational only)
-- `get_share_snippet`: copy-paste plain-text card (match, standings, bracket, …)
 - `get_team`: the World Cup roster; resolves a nation's name/code to its FIFA code, flag, group (fuzzy; offline)
 - `list_competitions`: the supported competitions: aliases, names, what each offers, and the current one (offline)
 
@@ -40,7 +39,7 @@ All tools are `readOnlyHint`; the match tools take optional `tz` / `lang` / `fla
 git clone https://github.com/arturogarrido/claudinho.git
 cp -R claudinho ~/.cursor/plugins/local/claudinho
 # Cursor → Developer: Reload Window
-# Settings → MCP → confirm `claudinho` lists 10 tools
+# Settings → MCP → confirm `claudinho` lists 9 tools
 ```
 
 Or run the server directly:

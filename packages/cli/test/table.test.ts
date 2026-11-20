@@ -1,4 +1,4 @@
-import type { GroupStandings, Match, ProviderAdapter } from '@claudinho/core';
+import { DISCLAIMER, type GroupStandings, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdTable } from '../src/commands';
 import type { CliConfig } from '../src/config';
@@ -143,6 +143,9 @@ describe('cmdTable — fail closed', () => {
     await cmdTable('A', ctx(bareAdapter, { json: false }));
     expect(text()).toContain('Group A');
     expect(text()).toContain('Live standings unavailable');
+    // A roster no provider served is not attributed to one; the disclaimer stays.
+    expect(text()).not.toContain('Live data:');
+    expect(text()).toContain(DISCLAIMER);
   });
 
   it('open scope: reports an outage without injecting or claiming a World Cup group', async () => {
@@ -152,6 +155,9 @@ describe('cmdTable — fail closed', () => {
     expect(o).not.toContain('No group found');
     expect(o).not.toContain('Group A');
     expect(o).not.toContain('Mexico');
+    // The outage names no provider, and keeps the disclaimer.
+    expect(o).not.toContain('Live data:');
+    expect(o).toContain(DISCLAIMER);
 
     writes = [];
     await cmdTable('A', ctx(openScopeAdapter));

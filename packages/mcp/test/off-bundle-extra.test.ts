@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { EspnAdapter, type ProviderAdapter } from '@claudinho/core';
 import { z } from 'zod/v3';
 import { OUTPUT_SCHEMAS } from '../src/server';
-import { toolGetMatch, toolGetNextFixture, toolGetShareSnippet } from '../src/tools';
+import { toolGetMatch, toolGetNextFixture } from '../src/tools';
 
 const STATS = ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points', 'rank'];
 const NOW = new Date('2026-10-10T15:00:00.000Z');
@@ -81,27 +81,16 @@ describe('get_match: the provider\u2019s earlier record, said as such', () => {
     strict('get_match', r.data);
   });
 
-  it('a match card with discovery down says it could not ask, and carries degraded', async () => {
-    const r = await toolGetShareSnippet({ matchId: '41', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { fail: () => json({}, 503) }).adapter });
+  it('a match with discovery down says it could not ask, and carries degraded', async () => {
+    const r = await toolGetMatch({ id: '41', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { fail: () => json({}, 503) }).adapter });
     expect(r.text).toContain("Couldn't reach the data provider");
     expect(r.data).toMatchObject({ degraded: true });
-    strict('get_share_snippet', r.data);
-  });
-});
-
-describe('the share card’s structured twin carries the span it says it searched', () => {
-  it('next: horizon; a match id: window; the schema holds', async () => {
-    const next = await toolGetShareSnippet({ team: 'Arsenal', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { events: [{ id: '13', date: '2026-10-11T15:00Z', home: CHE, away: LIV }] }).adapter });
-    expect(next.data).toMatchObject({ horizon: { days: 14 } });
-    strict('get_share_snippet', next.data);
-    const match = await toolGetShareSnippet({ matchId: '41', now: NOW, competition: 'eng.1', adapter: feed('eng.1').adapter });
-    expect(match.data).toMatchObject({ window: { from: '2026-10-09', to: '2026-10-24' } });
-    strict('get_share_snippet', match.data);
+    strict('get_match', r.data);
   });
 });
 
 describe('the advertised input: a team-taking tool that resolves a club takes a name', () => {
-  it('get_next_fixture and get_share_snippet take a bounded label; get_market_signal keeps the 3-letter code', async () => {
+  it('get_next_fixture takes a bounded label; get_market_signal keeps the 3-letter code', async () => {
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
     const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
     const { buildServer } = await import('../src/server');
@@ -116,7 +105,7 @@ describe('the advertised input: a team-taking tool that resolves a club takes a 
         const schema = tools.find((t) => t.name === name)?.inputSchema as { properties?: Record<string, Prop> } | undefined;
         return schema?.properties?.team;
       };
-      for (const name of ['get_next_fixture', 'get_share_snippet']) {
+      for (const name of ['get_next_fixture']) {
         expect(team(name)?.pattern, name).toBeUndefined();
         expect(team(name)?.maxLength, name).toBe(40);
         expect(team(name)?.minLength, name).toBe(1);
@@ -128,23 +117,7 @@ describe('the advertised input: a team-taking tool that resolves a club takes a 
   });
 });
 
-describe('the date card judges "nothing on this date" in the viewer’s zone, as get_today does', () => {
-  const ENDED = { year: 2026, displayName: '2026 Concacaf Champions Cup', startDate: '2026-02-01T05:00Z', endDate: '2026-10-09T03:59Z' };
-  const NONE = { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
-  const finalFT: Ev = { id: '50', date: '2026-10-09T02:00Z', home: { id: '8001', abbr: 'TOL', name: 'Toluca' }, away: { id: '8002', abbr: 'LAFC', name: 'Los Angeles FC' }, state: 'post' };
-  const cup = () => feed('concacaf.champions', { events: [finalFT], standings: NONE, season: () => ENDED }).adapter;
-
-  it('a UTC viewer: the final’s UTC date is the final, with no key; the day after, the key', async () => {
-    const day9 = await toolGetShareSnippet({ date: '2026-10-09', tz: 'UTC', now: NOW, competition: 'concacaf.champions', adapter: cup() });
-    expect(day9.text).toContain('Toluca');
-    expect((day9.data as { betweenEditions?: unknown }).betweenEditions).toBeUndefined();
-    const day10 = await toolGetShareSnippet({ date: '2026-10-10', tz: 'UTC', now: NOW, competition: 'concacaf.champions', adapter: cup() });
-    expect(day10.data).toMatchObject({ betweenEditions: { label: '2026 Concacaf Champions Cup' } });
-    strict('get_share_snippet', day10.data);
-  });
-});
-
-describe('review round 1 (coder): get_next_fixture on the World Cup resolves a name as the share card does, with no request', () => {
+describe('review round 1 (coder): get_next_fixture on the World Cup resolves a name, with no request', () => {
   it('an ambiguous name is the candidates; an unknown one is "no team called"; neither asks the provider', async () => {
     const f = feed('fifa.world');
     const amb = await toolGetNextFixture({ team: 'South', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
@@ -158,24 +131,10 @@ describe('review round 1 (coder): get_next_fixture on the World Cup resolves a n
     expect(f.urls).toEqual([]);
   });
 
-  it('a share card with a whole name resolves to the nation’s code', async () => {
+  it('a whole name resolves to the nation’s code', async () => {
     const f = feed('fifa.world');
-    const r = await toolGetShareSnippet({ team: 'Mexico', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
+    const r = await toolGetNextFixture({ team: 'Mexico', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
     expect((r.data as { team?: unknown }).team).toBe('MEX');
-  });
-});
-
-describe('review round 2 (coder): every card’s run cue names the competition off the bundle', () => {
-  // 0.11 · 2.5a: the competition is the call's argument, and the cue selects it by alias.
-  it('the table, bracket, match and date cards too', async () => {
-    const table = await toolGetShareSnippet({ group: 'LEAGUE', competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
-    expect(table.text).toContain('npx @claudinho/cli --competition premier-league table LEAGUE');
-    const bracket = await toolGetShareSnippet({ bracket: true, competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
-    expect(bracket.text).toContain('npx @claudinho/cli --competition premier-league bracket');
-    const match = await toolGetShareSnippet({ matchId: '41', competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
-    expect(match.text).toContain('npx @claudinho/cli --competition premier-league match 41');
-    const day = await toolGetShareSnippet({ date: '2026-10-11', competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
-    expect(day.text).toContain('npx @claudinho/cli --competition premier-league today');
-    for (const r of [table, bracket, match, day]) expect(r.text).not.toContain('CLAUDINHO_COMPETITION');
+    strict('get_next_fixture', r.data);
   });
 });

@@ -1,6 +1,6 @@
 /**
  * 0.11 PR 2.1c — the CLI surfaces off the bundle: `next <club>`, `match <id>`,
- * `bracket`, `today`, `live`, their share cards, text and `--json`.
+ * `bracket`, `today`, `live`, text and `--json`.
  *
  * Every answer here is one the base refuses ("not available for this
  * competition yet") or does not know how to say (between editions, the horizon,
@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EspnAdapter, type ProviderAdapter } from '@claudinho/core';
-import { cmdBracket, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdShare, cmdToday } from '../src/commands';
+import { cmdBracket, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -149,18 +149,6 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(parsed()).toMatchObject({ unknownTeam: true, fixture: null });
   });
 
-  it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
-    // 0.11 · 2.5a: the cue selects the competition by alias (`--competition premier-league`).
-    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
-    expect(text()).toContain('npx @claudinho/cli --competition premier-league next');
-    writes = [];
-    await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [{ id: '41', date: '2026-10-17T14:00Z', home: LIV, away: ARS }] }).adapter));
-    expect(text()).toContain('npx @claudinho/cli --competition premier-league match 41');
-    writes = [];
-    await cmdShare('live', undefined, {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
-    expect(text()).toContain('npx @claudinho/cli --competition premier-league live');
-  });
-
   it('a roster that could not be read whole is its own sentence, not an outage; a code hit then needs the full name (review round 2)', async () => {
     await cmdNext('ARS', ctxFor(feed('eng.1', { events: upcoming, standings: () => json({}, 503) }).adapter));
     expect(text()).not.toContain('reach the data provider');
@@ -234,39 +222,6 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(text()).toContain('may be incomplete');
     expect(text()).not.toContain('No upcoming fixture');
     expect(text()).toContain('Arsenal');
-    writes = [];
-    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter));
-    expect(text()).toContain('may be incomplete');
-    expect(text()).not.toContain('No upcoming fixture');
-  });
-
-  it('`share next` carries the resolved team and the candidates in `--json` (review round 1)', async () => {
-    await cmdShare('next', 'arsen', {}, ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, { json: true }));
-    expect(parsed()).toMatchObject({ team: { id: 'espn:359', name: 'Arsenal' }, horizon: { days: 14 } });
-    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
-    const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
-    const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
-    writes = [];
-    await cmdShare('next', 'CAR', {}, ctxFor(feed('conmebol.libertadores', { events, standings: LIB, season }).adapter, { json: true }));
-    expect((parsed().candidates as Array<{ name: string }>).map((c) => c.name).sort()).toEqual(['Always Ready', 'Carabobo']);
-    expect((parsed().matches as unknown[]).length).toBe(0);
-  });
-
-  it('`share next <name>`: the card titles the resolved side and carries the key in `--json`', async () => {
-    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
-    // Carabobo at HOME: a card that labels the side by code (the query is a name, not a code) would title Always Ready.
-    const events: Ev[] = [{ id: '21', date: '2026-10-15T22:00Z', home: CARABOBO, away: ALWAYS_READY }];
-    const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
-    await cmdShare('next', 'Carabobo', {}, ctxFor(feed('conmebol.libertadores', { events, standings: LIB, season }).adapter));
-    const t = text();
-    expect(t).toContain('Next up for Carabobo');
-    expect(t).not.toContain('Next up for Always Ready');
-    writes = [];
-    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter));
-    expect(text()).toContain('14 days');
-    writes = [];
-    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, { json: true }));
-    expect(parsed()).toMatchObject({ horizon: { days: 14 } });
   });
 });
 
@@ -319,35 +274,12 @@ describe('match <id> off the bundle (0.11 2.1c)', () => {
     expect(text()).toContain('earlier record');
   });
 
-  it('`share <id>` after a failed refresh: the card says the provider’s earlier record, never "the bundled schedule" (review round 1)', async () => {
-    const stale = feed('eng.1', { events: [inSpan, other], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) });
-    await cmdShare('41', undefined, {}, ctxFor(stale.adapter));
-    expect(text()).toContain('Arsenal');
-    expect(text()).not.toContain('bundled schedule');
-    expect(text()).toContain('earlier record');
-    writes = [];
-    await cmdShare('41', undefined, { style: 'compact' } as never, ctxFor(feed('eng.1', { events: [inSpan, other], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) }).adapter));
-    expect(text()).not.toContain('bundled schedule');
-  });
-
   it('an incomplete empty `match`: the "none read" sentence, never "no match found" (review round 1)', async () => {
     const broken: Ev = { id: '45', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
     await cmdMatch('41', ctxFor(feed('eng.1', { events: [broken, other] }).adapter));
     expect(text()).toContain('may be incomplete');
     expect(text()).not.toContain('No match found');
     expect(text()).toContain('41');
-    writes = [];
-    await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [broken, other] }).adapter));
-    expect(text()).toContain('may be incomplete');
-    expect(text()).not.toContain('No match found');
-  });
-
-  it('`share <id>`: the card for a found match; the window sentence on the empty card', async () => {
-    await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [inSpan, other] }).adapter));
-    expect(text()).toContain('Arsenal');
-    writes = [];
-    await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [other] }).adapter));
-    expect(text()).toContain('2026-10-24');
   });
 
   it('`markets <id>` stays unsupported off the bundle, with no request', async () => {
@@ -363,7 +295,7 @@ describe('match <id> off the bundle (0.11 2.1c)', () => {
 });
 
 describe('bracket off the bundle: three values (0.11 2.1c)', () => {
-  it('a league with no bracket says so on text, `--json` and the share card; a cup still says "not available yet"', async () => {
+  it('a league with no bracket says so on text and `--json`; a cup still says "not available yet"', async () => {
     const f = feed('eng.1');
     await cmdBracket(undefined, {}, ctxFor(f.adapter));
     expect(text()).toContain('no bracket');
@@ -373,12 +305,6 @@ describe('bracket off the bundle: three values (0.11 2.1c)', () => {
     await cmdBracket(undefined, {}, ctxFor(feed('eng.1').adapter, { json: true }));
     expect(parsed()).toMatchObject({ inapplicable: true });
     expect(parsed().unsupported).toBeUndefined();
-    writes = [];
-    await cmdShare('bracket', undefined, {}, ctxFor(feed('esp.1').adapter));
-    expect(text()).toContain('no bracket');
-    writes = [];
-    await cmdShare('bracket', undefined, {}, ctxFor(feed('esp.1').adapter, { json: true }));
-    expect(parsed()).toMatchObject({ inapplicable: true });
     for (const c of ['ita.1', 'ger.1', 'mex.1', 'uefa.champions']) {
       writes = [];
       await cmdBracket(undefined, {}, ctxFor(feed(c).adapter));
@@ -426,20 +352,6 @@ describe('between editions on the CLI (0.11 2.1c)', () => {
     await cmdMatch('99', ctxFor(cup([finalFT])));
     expect(text()).toContain('Between editions');
     expect(text()).not.toContain('2026-10-24');
-  });
-
-  it('the share cards say it too (live, today, next)', async () => {
-    await cmdShare('live', undefined, {}, ctxFor(cup([finalFT])));
-    expect(text()).toContain('Between editions');
-    writes = [];
-    await cmdShare(undefined, undefined, {}, ctxFor(cup([finalFT])));
-    expect(text()).toContain('Between editions');
-    writes = [];
-    await cmdShare('next', 'Toluca', {}, ctxFor(cup([finalFT])));
-    expect(text()).toContain('Between editions');
-    writes = [];
-    await cmdShare('live', undefined, {}, ctxFor(cup([finalFT]), { json: true }));
-    expect(parsed()).toMatchObject({ betweenEditions: { label: '2026 Concacaf Champions Cup' } });
   });
 
   it('a date on or before the end day is historical: its records, no sentence (in the provider’s zone, where the final is Oct 8)', async () => {

@@ -1,6 +1,6 @@
 /**
- * The day argument's ONE grammar (`today [date]`, `share <date>`, `markets
- * <date>`): what it reads with no clock (`parseDayArg`), the day it names from
+ * The day argument's ONE grammar (`today [date]`, `markets <date>`): what it
+ * reads with no clock (`parseDayArg`), the day it names from
  * the REQUEST's clock in the viewer's zone (`resolveDayArg`), and when a single
  * match's kickoff says its date (`kickoffLabel`). Every clock here is pinned;
  * none is the wall clock.
@@ -247,7 +247,7 @@ describe('a day word never means anything else on a command that takes one', () 
     }
   });
 
-  it("share's and markets' word targets (live, next, table, bracket) are not day words", () => {
+  it("the word targets (live, next, table, bracket) are not day words", () => {
     for (const target of ['live', 'next', 'table', 'bracket']) expect(parseDayArg(target), target).toBeUndefined();
   });
 });

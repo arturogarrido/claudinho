@@ -4,15 +4,14 @@
  * A "verdict" is something a result says about ITSELF that changes what a
  * reader may conclude: "this is not available for this competition" is not "no
  * fixture found". Twice in 0.10.1 a surface printed a verdict in its text and
- * dropped it from the structured twin (`share --json` lost `partial`,
+ * dropped it from the structured twin (a card's `--json` lost `partial`,
  * `markets --json` lost `unsupported`), and the MCP tools still drop
  * `unsupported` from `data` today. Each time the cause was the same: every
  * surface forwarded each verdict by hand.
  *
  * `verdictExtras` (the structured keys) and `verdictNotice` (the localized
  * sentence) are the two functions every surface now calls, so a verdict added
- * here reaches all of them, and the share cards CLI and MCP paste are assembled
- * once, in core.
+ * here reaches all of them.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
@@ -21,36 +20,10 @@ import { describe, expect, it } from 'vitest';
 import { MARKETS_SCOPE_NOTE } from '../src/markets/format';
 import { marketDisplayable } from '../src/markets/normalize';
 import { marketScopeVerdict } from '../src/markets/provider';
-import {
-  bracketShareCard,
-  dateShareCard,
-  liveShareCard,
-  matchShareCard,
-  nextShareCard,
-  tableShareCard,
-} from '../src/share/cards';
-import type { MarketSignal } from '../src/markets/types';
-import type { Match } from '../src/types';
 import { tableData } from '../src/standings';
 import { verdictExtras, verdictNotice, verdictQualifiers } from '../src/verdict';
-import { formatShareSnippet } from '../src/share/format';
-import { formatShareBracket } from '../src/bracket/format';
 
 const PACKAGES = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-const match: Match = {
-  id: '760415',
-  stage: 'GROUP',
-  group: 'A',
-  kickoff: '2026-06-11T19:00:00.000Z',
-  venue: 'Estadio Banorte',
-  home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
-  away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
-  status: 'SCHEDULED',
-  updatedAt: '2026-06-10T00:00:00.000Z',
-};
-const noMarket = { signals: new Map<string, MarketSignal>(), complete: true };
-const ctx = { tz: 'UTC', locale: 'en' };
 
 describe('verdictExtras — the structured keys, from one place', () => {
   it('carries a verdict a result states, and nothing when it states none', () => {
@@ -95,9 +68,9 @@ describe('verdictNotice — the sentence, in the reader’s language', () => {
 
 describe('a verdict REPLACES the body or QUALIFIES it, and the module says which (0.11 2.1b)', () => {
   // Found in the plan gate: `cmdBracket` and `toolGetBracket` treated ANY
-  // sentence as the whole answer, and `next` and the share cards printed one
-  // only on an empty body. A qualifying verdict sent through the one function
-  // would have hidden a readable tree, or vanished beside a populated card.
+  // sentence as the whole answer, and `next` printed one only on an empty
+  // body. A qualifying verdict sent through the one function would have
+  // hidden a readable tree, or vanished beside a populated answer.
   it('`unsupported` replaces; `incomplete` and `partial` qualify, in a fixed order', () => {
     expect(verdictNotice({ unsupported: true }, 'en')).toBe('Not available for this competition yet.');
     expect(verdictQualifiers({ unsupported: true }, 'en')).toEqual([]);
@@ -184,236 +157,12 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
   });
 });
 
-describe('share cards — assembled once, for the CLI and the MCP server alike', () => {
-  it('next and bracket: a partial read puts the sentence on the card beside the body, and the formatters print it (0.11 2.1b)', () => {
-    const partial = { partial: { omitted: 1 } };
-    const next = nextShareCard({ fixture: match, degraded: false, source: 'espn', ...partial }, 'MEX', noMarket, ctx);
-    expect(next.verdict).toEqual(partial);
-    expect(next.input.note).toBe('Fixture data may be incomplete (1 provider record omitted).');
-    const snippet = formatShareSnippet(next.input);
-    expect(snippet).toContain('Mexico');
-    expect(snippet).toContain('Fixture data may be incomplete (1 provider record omitted).');
-    // Empty body: the empty note AND the qualifier.
-    const none = nextShareCard({ fixture: undefined, degraded: false, source: 'espn', ...partial }, 'ARG', noMarket, ctx);
-    expect(none.input.emptyNote).toBe('No upcoming fixture found for ARG.');
-    expect(none.input.note).toBe('Fixture data may be incomplete (1 provider record omitted).');
-    expect(formatShareSnippet(none.input)).toContain('Fixture data may be incomplete (1 provider record omitted).');
-    // Localized, like the replacing sentence.
-    const es = nextShareCard({ fixture: match, degraded: false, source: 'espn', ...partial }, 'MEX', noMarket, { tz: 'UTC', locale: 'es' });
-    expect(es.input.note).not.toBe(next.input.note);
-    const view = { stages: [], degraded: false, standingsDegraded: false };
-    const bracket = bracketShareCard({ view, degraded: false, standingsDegraded: false, source: 'espn', ...partial }, 'R32', 'en');
-    expect(bracket.verdict).toEqual(partial);
-    expect(bracket.input.note).toBe('Fixture data may be incomplete (1 provider record omitted).');
-    expect(formatShareBracket(bracket.input)).toContain('Fixture data may be incomplete (1 provider record omitted).');
-    // A card without one has no note, and the formatters print none (the existing output, unchanged).
-    const plain = nextShareCard({ fixture: match, degraded: false, source: 'espn' }, 'MEX', noMarket, ctx);
-    expect(plain.input.note).toBeUndefined();
-    expect(formatShareSnippet(plain.input)).not.toContain('incomplete');
-  });
-
-  it('next: a fixture', () => {
-    const card = nextShareCard({ fixture: match, degraded: false, source: 'espn' }, 'MEX', noMarket, ctx);
-    expect(card).toMatchObject({ kind: 'next', target: 'next', team: 'MEX', verdict: {} });
-    expect(card.input).toMatchObject({
-      title: 'Next up for Mexico',
-      matches: [match],
-      source: 'espn',
-      degraded: false,
-      emptyNote: 'No upcoming fixture found for MEX.',
-      installLine: 'npx @claudinho/cli next MEX',
-      tz: 'UTC',
-      locale: 'en',
-    });
-  });
-
-  it('next: an outage never reads as "no fixture", and an unsupported competition says so', () => {
-    const down = nextShareCard({ fixture: undefined, degraded: true }, 'MEX', noMarket, ctx);
-    expect(down.input.title).toBe('Next up for MEX');
-    expect(down.input.emptyNote).toBe("Couldn't reach the data provider — no upcoming fixture confirmed for MEX.");
-    expect(down.verdict).toEqual({});
-
-    const off = nextShareCard({ fixture: undefined, degraded: false, unsupported: true }, 'ARS', noMarket, {
-      tz: 'UTC',
-      locale: 'es',
-    });
-    expect(off.input.emptyNote).toBe('Aún no disponible para esta competición.');
-    expect(off.verdict).toEqual({ unsupported: true });
-  });
-
-  it('match: found, not found, unsupported', () => {
-    const found = matchShareCard({ match, degraded: false, source: 'espn' }, '760415', noMarket, ctx);
-    expect(found).toMatchObject({ kind: 'match', target: '760415', verdict: {} });
-    expect(found.input).toMatchObject({
-      title: 'Match pulse',
-      matches: [match],
-      emptyNote: 'No match found with id 760415.',
-      installLine: 'npx @claudinho/cli match 760415',
-    });
-    const off = matchShareCard({ match: undefined, degraded: false, unsupported: true }, '760415', noMarket, ctx);
-    expect(off.input.matches).toEqual([]);
-    expect(off.input.emptyNote).toBe('Not available for this competition yet.');
-    expect(off.verdict).toEqual({ unsupported: true });
-  });
-
-  it('a date: today or an explicit day, with a caller-bounded list', () => {
-    const today = dateShareCard(
-      { date: '2026-06-11', explicit: false, matches: [match], degraded: false, source: 'espn', read: { skeleton: true } },
-      noMarket,
-      ctx,
-    );
-    expect(today).toMatchObject({ kind: 'today', target: '2026-06-11' });
-    expect(today.input.title).toBe("Today's matches · Jun 11");
-    expect(today.input.emptyNote).toBe('No matches scheduled for Jun 11.');
-    expect(today.input.installLine).toBe('npx @claudinho/cli today');
-
-    // A bounded list's cap is a note after the verdict's, never the title's suffix (a card is cut from the end;
-    // what qualifies the body follows the verdict).
-    const explicit = dateShareCard(
-      { date: '2026-06-11', explicit: true, matches: [], degraded: true, read: { skeleton: true }, cap: '(showing 20 of 31 — list truncated)' },
-      noMarket,
-      ctx,
-    );
-    expect(explicit.input.title).toBe('Matches · Jun 11');
-    expect(explicit.input.note).toBe('(showing 20 of 31 — list truncated)');
-    expect(explicit.input.degraded).toBe(true);
-  });
-
-  it('a date: an outage reads as "no matches scheduled" only where the read merged the bundled schedule', () => {
-    // Found in review. The empty note was unconditional, and the formatter adds
-    // its own outage notice only when there ARE matches: off the bundle, a feed
-    // that is down pasted as an empty day. The READ says whether the skeleton
-    // was merged (`skeleton`); the card has no second input for the same fact.
-    const day = { date: '2026-10-01', explicit: true, matches: [], degraded: true };
-    expect(dateShareCard({ ...day, read: {} }, noMarket, ctx).input.emptyNote).toBe(
-      "Couldn't reach the data provider — no fixtures confirmed for Oct 1.",
-    );
-    expect(dateShareCard({ ...day, read: { skeleton: true } }, noMarket, ctx).input.emptyNote).toBe(
-      'No matches scheduled for Oct 1.',
-    );
-    expect(dateShareCard({ ...day, degraded: false, read: {} }, noMarket, ctx).input.emptyNote).toBe(
-      'No matches scheduled for Oct 1.',
-    );
-  });
-
-  it('a date: an empty partial card that merged no schedule names the date as the card does (its label), like its outage line', () => {
-    // Found in review: the none-read line printed the ISO date while the title and the outage line print "Oct 17".
-    const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
-    const card = dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, ctx);
-    expect(card.input.title).toBe('Matches · Oct 17');
-    expect(card.input.emptyNote).toContain('Oct 17');
-    expect(card.input.emptyNote).not.toContain('2026-10-17');
-    expect(card.input.emptyNote).toMatch(/read/);
-  });
-
-  it('a date card names its calendar date whatever the viewer’s zone: the title, the none-read line and the outage line', () => {
-    // Found in review: the label was noon UTC of the date formatted in the viewer's zone, which in a zone past
-    // UTC+12 (Auckland in summer, Kiritimati) is the NEXT day: a card for 2026-10-17 said "Oct 18" in its title
-    // (pre-existing) and, since this PR, in its empty-day sentences. A calendar date has no zone.
-    for (const tz of ['Pacific/Kiritimati', 'Pacific/Auckland', 'Pacific/Pago_Pago', 'UTC']) {
-      const far = { tz, locale: 'en' };
-      const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
-      const partial = dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, far);
-      expect(partial.input.title, tz).toBe('Matches · Oct 17');
-      expect(partial.input.emptyNote, tz).toContain('Oct 17');
-      expect(partial.input.emptyNote, tz).not.toContain('Oct 18');
-      expect(partial.input.emptyNote, tz).not.toContain('Oct 16');
-      const outage = dateShareCard({ ...day, degraded: true, read: {} }, noMarket, far);
-      expect(outage.input.emptyNote, tz).toContain('Oct 17');
-    }
-  });
-
-  it('a date card’s sentences end with one period in every locale: the label’s abbreviation dot (fr "17 oct.", pt "17 de out.") is not doubled', () => {
-    // Found in review: pre-existing in the card's "No matches scheduled for <label>.", carried into the two new
-    // sentences once they took the label.
-    for (const locale of ['fr', 'pt', 'es', 'en']) {
-      const far = { tz: 'UTC', locale };
-      const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
-      const notes = [
-        dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, far).input.emptyNote,
-        dateShareCard({ ...day, degraded: true, read: {} }, noMarket, far).input.emptyNote,
-        dateShareCard({ ...day, read: { skeleton: true } }, noMarket, far).input.emptyNote,
-      ];
-      for (const note of notes) {
-        expect(note, `${locale}: ${note}`).not.toMatch(/\.\./);
-        expect(note, `${locale}: ${note}`).toMatch(/\.$/);
-      }
-    }
-  });
-
-  it('live: nothing on, and a feed that is down, are different cards', () => {
-    const quiet = liveShareCard({ matches: [], degraded: false, source: 'espn' }, ctx);
-    expect(quiet).toMatchObject({ kind: 'live', target: 'live' });
-    expect(quiet.input).toMatchObject({
-      title: 'Live match pulse',
-      emptyNote: 'No matches in play right now.',
-      installLine: 'npx @claudinho/cli live',
-    });
-    const down = liveShareCard({ matches: [], degraded: true }, ctx, { cap: '(showing 0 of 0 — list truncated)' });
-    expect(down.input.emptyNote).toBe("Live scores unavailable right now — couldn't reach the data provider.");
-    expect(down.input.title).toBe('Live match pulse');
-    expect(down.input.note).toBe('(showing 0 of 0 — list truncated)');
-  });
-
-  it('live: a surface that bounds its payload gets a card of the bounded list', () => {
-    const other: Match = { ...match, id: '760416' };
-    const all = { matches: [match, other], degraded: false, source: 'espn' };
-    expect(liveShareCard(all, ctx).input.matches).toEqual([match, other]);
-    expect(liveShareCard(all, ctx, { matches: [match] }).input.matches).toEqual([match]);
-  });
-
-  it('a table: no attribution when degraded, and the empty note names what is missing', () => {
-    const live = tableShareCard({ tables: [], degraded: false, source: 'espn' }, 'Z');
-    expect(live.input).toMatchObject({ source: 'espn', installLine: 'npx @claudinho/cli table Z', emptyNote: 'No group Z.' });
-    const all = tableShareCard({ tables: [], degraded: false, source: 'espn' }, undefined);
-    expect(all.input).toMatchObject({ installLine: 'npx @claudinho/cli table', emptyNote: 'No standings available.' });
-    // A degraded result may still name the provider it tried; the card must not.
-    const down = tableShareCard({ tables: [], degraded: true, source: 'espn' }, 'A');
-    expect(down.source).toBeUndefined();
-    expect(down.input.source).toBeUndefined();
-    expect(down.degraded).toBe(true);
-    expect(down.input.emptyNote).toBe('Live standings unavailable.');
-  });
-
-  it('a table: a surface that bounds its payload gets a card of the bounded tables', () => {
-    const table = (group: string) => ({ group, rows: [] });
-    const result = { tables: [table('A'), table('B')], degraded: false, source: 'espn' };
-    expect(tableShareCard(result, undefined).input.tables).toHaveLength(2);
-    const bounded = tableShareCard(result, undefined, [table('A')]);
-    expect(bounded.input.tables).toEqual([table('A')]);
-    expect(bounded.tables).toEqual([{ group: 'A', standings: [] }]);
-  });
-
-  it('a table: the structured form keeps the verdict a partial table carries', () => {
+describe('tableData — a table’s structured form', () => {
+  it('keeps the verdict a partial table carries', () => {
     const whole = { group: 'A', rows: [] };
     const partial = { group: 'B', rows: [], partial: { omitted: 2 } };
     expect(tableData(whole)).toEqual({ group: 'A', standings: [] });
     expect(tableData(partial)).toEqual({ group: 'B', standings: [], partial: { omitted: 2 } });
-    const card = tableShareCard({ tables: [whole, partial], degraded: false, source: 'espn' }, undefined);
-    expect(card.tables).toEqual([
-      { group: 'A', standings: [] },
-      { group: 'B', standings: [], partial: { omitted: 2 } },
-    ]);
-  });
-
-  it('a bracket: the unsupported verdict rides on the card', () => {
-    const view = { stages: [], degraded: false, standingsDegraded: false };
-    const wc = bracketShareCard({ view, degraded: false, standingsDegraded: false, source: 'espn' }, 'QF', 'en');
-    expect(wc.input).toMatchObject({ source: 'espn', installLine: 'npx @claudinho/cli bracket QF' });
-    expect(wc.verdict).toEqual({});
-    const off = bracketShareCard(
-      { view: { ...view, unsupported: true }, degraded: false, standingsDegraded: false, unsupported: true },
-      undefined,
-      'fr',
-    );
-    expect(off.input.installLine).toBe('npx @claudinho/cli bracket');
-    expect(off.input.emptyNote).toBe('Pas encore disponible pour cette compétition.');
-    expect(off.verdict).toEqual({ unsupported: true });
-    // Structure only (the feed was down): no provider is attributed.
-    const down = bracketShareCard({ view, degraded: true, standingsDegraded: true, source: 'espn' }, undefined, 'en');
-    expect(down.source).toBeUndefined();
-    expect(down.input.source).toBeUndefined();
-    expect(down.degraded).toBe(true);
   });
 });
 
@@ -461,7 +210,7 @@ describe('one definition of each rule the two surfaces used to copy', () => {
   it('a surface hands over the RESULT, not the fields it remembers', () => {
     // `verdictExtras({ unsupported })` compiles and works today, and silently
     // drops the next verdict a result learns to state. The functions are given
-    // the result itself (or a card's verdict), never an object built on the spot.
+    // the result itself, never an object built on the spot.
     const rewrapped = /verdict(Extras|Notice|Qualifiers)\(\s*\{/;
     expect(hits('cli', rewrapped)).toEqual([]);
     expect(hits('mcp', rewrapped)).toEqual([]);
@@ -497,19 +246,6 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     expect(verdictNotice({ incomplete: true }, 'en')).toBeUndefined();
     // "Not available" replaces the body, so it is the one said when a result states both.
     expect(verdictNotice({ unsupported: true, incomplete: true }, 'en')).toBe('Not available for this competition yet.');
-  });
-
-  it('a surface never assembles a card: it does not write an empty note or a run cue', () => {
-    for (const pkg of ['cli', 'mcp']) {
-      expect(codeHits(pkg, /\bemptyNote\b/), pkg).toEqual([]);
-      expect(codeHits(pkg, /\binstallLine\s*:/), pkg).toEqual([]);
-    }
-    // And it does call the builders, every one, from the one file that shares.
-    const builders = ['liveShareCard', 'dateShareCard', 'nextShareCard', 'matchShareCard', 'tableShareCard', 'bracketShareCard'];
-    for (const [pkg, file] of [['cli', 'commands.ts'], ['mcp', 'tools.ts']] as const) {
-      const code = stripComments(readFileSync(join(PACKAGES, pkg, 'src', file), 'utf8'));
-      for (const b of builders) expect(code.includes(`${b}(`), `${pkg} ${b}`).toBe(true);
-    }
   });
 
   it('a surface never builds a table’s structured form or re-derives the display rule', () => {
@@ -563,7 +299,7 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     expect(typeof date).toBe('function');
     expect(typeof unserved).toBe('function');
     expect(typeof unreached).toBe('function');
-    // The outage sentence of a day with no bundled schedule: the date card's, now every date surface's.
+    // The outage sentence of a day with no bundled schedule, on every date surface.
     expect(unreached?.('2026-10-10', 'en')).toMatch(/no fixtures confirmed/);
     expect(unreached?.('2026-10-10', 'en')).toContain('2026-10-10');
     expect(unreached?.('2026-10-10', 'es')).not.toBe(unreached?.('2026-10-10', 'en'));

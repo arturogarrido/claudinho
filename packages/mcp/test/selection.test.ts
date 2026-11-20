@@ -20,7 +20,6 @@ import {
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
-  toolGetShareSnippet,
   toolGetStandings,
   toolGetTeam,
   toolGetToday,
@@ -68,7 +67,7 @@ const strict = (tool: keyof typeof OUTPUT_SCHEMAS, data: unknown) => {
 const PL = { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'flag' };
 
 describe('every competition-answering tool takes `competition`, says it first, and carries it in data', () => {
-  it('get_today, get_live, get_match, get_next_fixture, get_standings, get_bracket, get_market_signal, get_share_snippet', async () => {
+  it('get_today, get_live, get_match, get_next_fixture, get_standings, get_bracket, get_market_signal', async () => {
     const a = adapterFor('eng.1');
     const calls: Array<[keyof typeof OUTPUT_SCHEMAS, () => Promise<{ text: string; data: unknown }>]> = [
       ['get_today', () => toolGetToday({ date: '2026-10-04', competition: 'premier-league', adapter: a, now: NOW })],
@@ -78,19 +77,12 @@ describe('every competition-answering tool takes `competition`, says it first, a
       ['get_standings', () => toolGetStandings({ competition: 'premier-league', adapter: a })],
       ['get_bracket', () => toolGetBracket({ competition: 'premier-league', adapter: a })],
       ['get_market_signal', () => toolGetMarketSignal({ date: '2026-10-04', competition: 'premier-league', adapter: a, marketProvider: new FakeMarketProvider(), now: NOW })],
-      ['get_share_snippet', () => toolGetShareSnippet({ live: true, competition: 'premier-league', adapter: a, marketProvider: new FakeMarketProvider(), now: NOW })],
     ];
     for (const [tool, call] of calls) {
       const r = await call();
       expect((r.data as Rec).competition, tool).toEqual(PL);
       strict(tool, r.data);
-      if (tool === 'get_share_snippet') {
-        // The card is the artifact: its title names the competition, no mode line is prepended.
-        expect(r.text.split('\n').find((l) => l.trim() !== ''), tool).toContain('Premier League');
-        expect(r.text, tool).not.toContain('from the request');
-      } else {
-        expect(r.text.split('\n')[0], tool).toBe('Premier League · from the request');
-      }
+      expect(r.text.split('\n')[0], tool).toBe('Premier League · from the request');
     }
   });
 
@@ -131,7 +123,6 @@ describe('every competition-answering tool takes `competition`, says it first, a
     let reads = 0;
     const counting: ProviderAdapter = { ...adapterFor('eng.1'), async fetchByDate() { reads++; return [fixture]; }, async fetchLive() { reads++; return [fixture]; }, async fetchWindow() { reads++; return [fixture]; } };
     await expect(toolGetLive({ competition: 'serie-a', adapter: counting, now: NOW })).rejects.toThrow(/ita\.1|serie-a/);
-    await expect(toolGetShareSnippet({ live: true, competition: 'serie-a', adapter: counting, marketProvider: new FakeMarketProvider(), now: NOW })).rejects.toThrow(/eng\.1/);
     process.env.CLAUDINHO_COMPETITION = 'laliga';
     await expect(toolGetToday({ date: '2026-10-04', adapter: counting, now: NOW })).rejects.toThrow(/esp\.1|laliga/);
     delete process.env.CLAUDINHO_COMPETITION;
@@ -145,13 +136,11 @@ describe('every competition-answering tool takes `competition`, says it first, a
 });
 
 describe('the server instructions say which answers name the competition first', () => {
-  it('the sentence names its exceptions: get_team, get_share_snippet and list_competitions', () => {
-    // One sentence: the claim and its three exceptions, so a reader of the instructions is not told that
-    // get_team's roster line, a card's title or the listing's `Current:` are mode lines.
+  it('the sentence names its exceptions: get_team and list_competitions', () => {
+    // One sentence: the claim and its two exceptions, so a reader of the instructions is not told that
+    // get_team's roster line or the listing's `Current:` are mode lines.
     const sentence = INSTRUCTIONS.split(/(?<=\.)\s/).find((x) => /starts with the competition/.test(x)) ?? '';
-    expect(sentence).toMatch(/get_team/);
-    expect(sentence).toMatch(/get_share_snippet/);
-    expect(sentence).toMatch(/list_competitions/);
+    expect(sentence).toMatch(/^Every tool's text but get_team's and list_competitions' starts with the competition it is for/);
     expect(sentence).not.toMatch(/^Every answer's text starts/);
   });
 });
@@ -236,7 +225,7 @@ describe('list_competitions', () => {
 });
 
 describe('the contract, through a client', () => {
-  it('ten tools; `competition` on the eight competition-answering ones and not on get_team; list_competitions offline; selection declared on every competition-answering output schema', async () => {
+  it('nine tools; `competition` on the seven competition-answering ones and not on get_team; list_competitions offline; selection declared on every competition-answering output schema', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
     const server = buildServer();
     await server.connect(serverT);
@@ -244,7 +233,7 @@ describe('the contract, through a client', () => {
     await client.connect(clientT);
     try {
       const { tools } = await client.listTools();
-      expect(tools.map((t) => t.name).sort()).toEqual(['get_bracket', 'get_live', 'get_market_signal', 'get_match', 'get_next_fixture', 'get_share_snippet', 'get_standings', 'get_team', 'get_today', 'list_competitions']);
+      expect(tools.map((t) => t.name).sort()).toEqual(['get_bracket', 'get_live', 'get_market_signal', 'get_match', 'get_next_fixture', 'get_standings', 'get_team', 'get_today', 'list_competitions']);
       for (const t of tools) {
         const props = Object.keys((t.inputSchema as { properties?: Record<string, unknown> }).properties ?? {});
         const out = JSON.stringify(t.outputSchema ?? {});
@@ -272,7 +261,7 @@ describe('the contract, through a client', () => {
     }
   });
 
-  it('OUTPUT_SCHEMAS covers the ten tools', () => {
-    expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual(['get_bracket', 'get_live', 'get_market_signal', 'get_match', 'get_next_fixture', 'get_share_snippet', 'get_standings', 'get_team', 'get_today', 'list_competitions']);
+  it('OUTPUT_SCHEMAS covers the nine tools', () => {
+    expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual(['get_bracket', 'get_live', 'get_market_signal', 'get_match', 'get_next_fixture', 'get_standings', 'get_team', 'get_today', 'list_competitions']);
   });
 });

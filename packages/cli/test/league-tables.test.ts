@@ -1,5 +1,5 @@
 /**
- * 0.11 PR 2.3 on the CLI: `table` and `share table` for every table shape, in
+ * 0.11 PR 2.3 on the CLI: `table` for every table shape, in
  * text and `--json`. Each case goes from a payload recorded on the real feed
  * (Oct 2 2026) through the real adapter into the command: nothing here injects
  * an already-parsed table.
@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InputError, cmdShare, cmdTable } from '../src/commands';
+import { InputError, cmdTable } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -202,50 +202,5 @@ describe('a table argument is a key, or it is refused before anything is asked',
     // French says "classement" for standings; "tableau" is this product's word for the bracket.
     await expect(cmdTable('A B', ctx('uefa.euro', { lang: 'fr' }))).rejects.toThrow(/Ce n'est pas un classement/);
     expect(requests).toBe(0);
-  });
-
-  it('`share table`: the same', async () => {
-    await expect(cmdShare('table', 'A B', {}, ctx('uefa.euro'))).rejects.toBeInstanceOf(InputError);
-    expect(requests).toBe(0);
-  });
-});
-
-describe('`share table`', () => {
-  it('a league card: titled with label and key, and the card’s structured form has the label', async () => {
-    await cmdShare('table', 'league', {}, ctx('eng.1'));
-    expect(text()).toContain('2026-27 English Premier League (LEAGUE) · standings');
-    // A card row is rank, code, points (how a club is drawn is PR 2.2's).
-    expect(text()).toMatch(/1\. .*MNC {2}15 pts/);
-    writes = [];
-    await cmdShare('table', 'LEAGUE', {}, ctx('eng.1', { json: true }));
-    const data = json();
-    expect(data).toMatchObject({ kind: 'table', group: 'LEAGUE', degraded: false, source: 'espn' });
-    expect(data.tables[0]).toMatchObject({ group: 'LEAGUE', label: '2026-27 English Premier League' });
-    expect(data).not.toHaveProperty('incomplete');
-  });
-
-  it('a lettered card is what it was', async () => {
-    await cmdShare('table', 'A', {}, ctx('uefa.euro'));
-    expect(text()).toContain('Group A · standings');
-  });
-
-  it('every table, with one missing: the card says so in the reader’s language, like every verdict on a card, and in its structured form', async () => {
-    // Found in review: the sentence was English on the card whatever the
-    // language, while `table` printed it localized. A card's copy is English;
-    // the one sentence it prints for a VERDICT is the localized one, on every
-    // surface.
-    for (const lang of ['en', 'es', 'pt', 'fr'] as const) {
-      writes = [];
-      await cmdShare('table', undefined, {}, ctx('uefa.euro', { lang }, shortOf('uefa.euro')));
-      expect(text(), lang).toContain(`(${INCOMPLETE[lang]})`);
-      // The rest of the card stays English.
-      expect(text(), lang).toContain('Group A · standings');
-    }
-    writes = [];
-    await cmdShare('table', undefined, {}, ctx('uefa.euro', { json: true }, shortOf('uefa.euro')));
-    const data = json();
-    expect(data.incomplete).toBe(true);
-    expect(data.snippet).toContain(INCOMPLETE.en);
-    expect(data.tables).toHaveLength(2);
   });
 });

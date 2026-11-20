@@ -64,7 +64,7 @@ function placesOf(named: string): string[] {
   // Every base that holds it: `src/index.ts` is three files, and the first one found must not decide.
   const based = BASES.map((base) => (base === '' ? clean : `${base}/${clean}`)).filter(exists);
   if (based.length > 0) return based;
-  // A path written from inside a source folder (`bracket/format.ts`, `share/cards.ts`): the files that end with it.
+  // A path written from inside a source folder (`bracket/format.ts`, `trust/espn.ts`): the files that end with it.
   return ALL_FILES.filter((f) => f.endsWith(`/${clean}`));
 }
 /** A named path's places, every brace alternative of it: empty when ANY alternative is nowhere. */
@@ -168,8 +168,8 @@ function check(text: string): Finding[] {
     const files = places.flatMap((place) => (DIRS.has(place) ? ALL_FILES.filter((f) => f.startsWith(`${place}/`) && SOURCE_EXT.test(f)) : [place]));
     if (!files.some((f) => wordsOf(f).has(name))) findings.push({ kind: 'location', name, detail: `not in ${where}` });
   }
-  // A table row about ONE place (`| \`packages/core/src/share\` | ... | what it holds |`): a name its last cell gives
-  // without a file of its own must be in that place (PR #250: `formatShareBracket` sat in the share folder's row).
+  // A table row about ONE place (`| \`packages/core/src/markets\` | ... | what it holds |`): a name its last cell gives
+  // without a file of its own must be in that place (PR #250: a formatter sat in the row of a folder that did not hold it).
   for (const row of text.matchAll(/^\| (`[^|\n]+)\|[^|\n]*\|([^\n]*)\|[ \t]*$/gm)) {
     // The first cell's paths (a row may be about two files); a name the row itself gives a file to is that pair's.
     const cell = [...(row[1] as string).matchAll(/`([^`\n]+)`/g)].map((m) => m[1] as string);
@@ -235,17 +235,17 @@ describe('the check fails on the mistakes it exists for', () => {
     expect(check('`testPackages` decides').map((f) => f.kind)).toEqual(['identifier']);
   });
 
-  it('a name given with the wrong file (PR #250: `formatShareBracket` was listed under the share folder)', () => {
-    expect(check('the formatter `formatShareBracket` in `packages/core/src/share/format.ts`').map((f) => `${f.kind}:${f.name}`)).toEqual(['location:formatShareBracket']);
-    expect(check('the formatter `formatShareBracket` in `../bracket/format.ts`')).toEqual([]);
+  it('a name given with the wrong file (PR #250: a formatter was listed under a folder that did not hold it)', () => {
+    expect(check('the formatter `formatBracketList` in `packages/core/src/markets/format.ts`').map((f) => `${f.kind}:${f.name}`)).toEqual(['location:formatBracketList']);
+    expect(check('the formatter `formatBracketList` in `../bracket/format.ts`')).toEqual([]);
     expect(check('`stageFromSlug` (`core/src/trust/espn.ts`) bounds the raw value')).toEqual([]);
     expect(check('`stageFromSlug` (`core/src/trust/match.ts`) bounds the raw value').map((f) => f.kind)).toEqual(['location']);
   });
 
-  it('the PR #250 row as main had it: a formatter listed in the row of a folder that does not hold it', () => {
-    const was = '| `packages/core/src/share` | — | shareable snippets: the card builders (`cards.ts`) and the formatters (`formatShareSnippet`, `formatShareTable`, `formatShareBracket`); disclaimer non-optional |';
-    expect(check(was).map((f) => `${f.kind}:${f.name}`)).toEqual(['location:formatShareBracket']);
-    const is = '| `packages/core/src/share` | — | `formatShareSnippet` and `formatShareTable` live here, `formatShareBracket` in `../bracket/format.ts` |';
+  it('the shape of the PR #250 row: a formatter listed in the row of a folder that does not hold it', () => {
+    const was = '| `packages/core/src/markets` | — | the market sidecar: the provider (`provider.ts`) and the formatters (`marketBlock`, `marketLine`, `formatBracketList`); copy from the approved bank |';
+    expect(check(was).map((f) => `${f.kind}:${f.name}`)).toEqual(['location:formatBracketList']);
+    const is = '| `packages/core/src/markets` | — | `marketBlock` and `marketLine` live here, `formatBracketList` in `../bracket/format.ts` |';
     expect(check(is)).toEqual([]);
   });
 
@@ -258,7 +258,7 @@ describe('the check fails on the mistakes it exists for', () => {
   });
 
   it('a name paired elsewhere in the file, a row about two files, a bare glob', () => {
-    const row = '| `packages/core/src/share` | — | the card builders and `stageFromSlug` |';
+    const row = '| `packages/core/src/markets` | — | the copy bank and `stageFromSlug` |';
     expect(check(`\`stageFromSlug\` (\`core/src/trust/espn.ts\`) bounds it.\n${row}`).map((f) => `${f.kind}:${f.name}`)).toEqual(['location:stageFromSlug']);
     expect(check('| `.cursor-plugin/plugin.json` + `mcp.json` (repo root) | — | wraps the server (`mcpServers`) |')).toEqual([]);
     expect(check('`*.gone.tsx`').map((f) => f.kind)).toEqual(['path']);
@@ -295,7 +295,7 @@ describe('the check fails on the mistakes it exists for', () => {
 
   it('a snake_case name (an MCP tool), and a name whose path is several files', () => {
     expect(check('agents call `get_next_fixtures`').map((f) => f.kind)).toEqual(['identifier']);
-    expect(check('agents call `get_next_fixture` and `get_share_snippet`')).toEqual([]);
+    expect(check('agents call `get_next_fixture` and `get_bracket`')).toEqual([]);
     // `src/index.ts` is one file per package: core's holds `selectionExtras`, and no order of folders may hide it.
     expect(check('`selectionExtras` (`src/index.ts`)')).toEqual([]);
     expect(check('`selectionExtrasGone` (`src/index.ts`)').map((f) => f.kind)).toEqual(['identifier', 'location']);

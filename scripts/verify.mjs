@@ -142,7 +142,7 @@ options:
   --dry-run                                 seed: say what would be written, write nothing
 
 refused before any child: the install commands (init, init-statusline, init-hook, init-cursor-statusline,
-claude, cursor), star, _refresh, any --copy, an --env key that is not a scenario key or has no value, a --cache
+claude, cursor), star, _refresh, an --env key that is not a scenario key or has no value, a --cache
 that is not a directory, an evidence directory (--out or the default) or a temporary root (under TMPDIR) inside the
 replay corpus, a label with a dot, and a label already taken in --out; for prompt, hook and ambient, a positional
 or a -- argv, --slug without --seed club, and --seed none on a cache directory that has entries.
@@ -287,14 +287,13 @@ function subcommandOf(argv) {
   return undefined;
 }
 
-/** The child argv `run` may start: the install commands, star, _refresh and any --copy are refused before any child. */
+/** The child argv `run` may start: the install commands, star and _refresh are refused before any child. */
 function checkChildArgv(argv) {
   if (!argv || argv.length === 0) throw refuse('no CLI command: put it after --, e.g. -- today 2026-10-07');
   const sub = subcommandOf(argv);
   if (sub !== undefined && REFUSED_COMMANDS.has(sub)) {
     throw refuse(`\`${sub}\` writes outside the sandbox or is the product's own internal command (the install commands, star and _refresh are never run)`);
   }
-  if (argv.some((a) => a === '--copy' || a.startsWith('--copy='))) throw refuse('--copy writes the clipboard, outside the sandbox');
 }
 
 /** Inserts tokens before a child argv's own `--`, else at its end. */

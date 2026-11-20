@@ -39,7 +39,7 @@ describe('the live market path ends at the same seal as the cache path', () => {
     });
     const label = built.outcomes.find((o) => o.kind === 'home')?.label ?? '';
     // U+202E transposes the DISPLAYED text under the bidi algorithm, which is
-    // what makes it matter on a share card.
+    // what makes it matter wherever a label is shown.
     expect(label).not.toContain('\u202E');
   });
 

@@ -6,8 +6,8 @@
  * carries such a verdict as a field (`unsupported`), and every surface has to
  * turn it into two things: a sentence in its text and a key in its structured
  * output. For a long time each surface did both by hand, at every emit site,
- * and the structured half was forgotten three times: `share table --json` lost
- * `partial`, `markets --json` lost `unsupported`, and the MCP tools returned
+ * and the structured half was forgotten more than once: `markets --json` lost
+ * `unsupported`, and the MCP tools returned
  * `data` for an unsupported competition identical to an empty World Cup answer.
  *
  * So there is ONE place a verdict becomes output. A surface spreads
@@ -228,7 +228,7 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
  * window held, in the order shown (a shown fixture not among them is the
  * bundled schedule's row, its live state unconfirmed). Bounded like the rows
  * it interprets: `shown` is what the surface finally displays (the day's rows,
- * the bounded list, the card's matches, the one match), never the window's
+ * the bounded list, the one match), never the window's
  * every id, which can hold other dates. A plain field, not a verdict, carried
  * only BESIDE the `partial` verdict it interprets: empty on a whole read,
  * whose structured output keeps its shape, and when the result states none.

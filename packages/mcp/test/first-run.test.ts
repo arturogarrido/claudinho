@@ -78,7 +78,6 @@ describe('a tool with nothing chosen', () => {
     ['get_standings', {}, { degraded: false, source: null, tables: [] }],
     ['get_bracket', {}, { view: null }],
     ['get_market_signal', { date: '2026-10-10' }, { informationalOnly: true, signal: null }],
-    ['get_share_snippet', { live: true }, { kind: 'live' }],
   ];
 
   it('answers the verdict through the server: the sentence first, the empty healthy shape plus the two keys, schema-valid, no adapter built, no request', async () => {
@@ -93,9 +92,8 @@ describe('a tool with nothing chosen', () => {
         expect(text, tool).toMatch(/claudinho follow/);
         const data = r.structuredContent as Rec;
         expect(data, tool).toMatchObject({ ...shape, noCompetition: true, competition: null });
-        if (tool === 'get_share_snippet') expect(data.snippet, tool).toMatch(/No competition chosen/);
         // Nothing beyond the tool's shape and the two keys.
-        const extra = Object.keys(data).filter((k) => !(k in shape) && k !== 'noCompetition' && k !== 'competition' && k !== 'snippet');
+        const extra = Object.keys(data).filter((k) => !(k in shape) && k !== 'noCompetition' && k !== 'competition');
         expect(extra, tool).toEqual([]);
         strict(tool, data);
       }

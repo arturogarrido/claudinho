@@ -17,7 +17,6 @@ import {
   toolGetBracket,
   toolGetMarketSignal,
   toolGetNextFixture,
-  toolGetShareSnippet,
 } from '../src/tools';
 
 const RESOLVED_R32_ID = '760486'; // bundle: "Group A 2nd" vs "Group B 2nd" (both 🏳️)
@@ -60,25 +59,8 @@ describe('knockout surface coverage — every team-facing MCP tool live-resolves
     expect((r.data as { fixture: Match | null }).fixture?.away.code).toBe('ECU');
   });
 
-  it('get_share_snippet { team } shows the resolved opponent', async () => {
-    const r = await toolGetShareSnippet({ team: 'MEX', now: KNOCKOUT_NOW, adapter: overlayAdapter });
-    expect(r.text).toContain('Ecuador');
-    expect(r.text).not.toContain(PLACEHOLDER_FLAG);
-  });
-
   it('get_bracket renders the resolved tie in its slot', async () => {
     const r = await toolGetBracket({ stage: 'R32', now: KNOCKOUT_NOW, adapter: overlayAdapter });
-    expect(r.text).toContain('Mexico');
-    expect(r.text).toContain('Ecuador');
-  });
-
-  it('get_share_snippet { bracket } renders the resolved tie in its slot', async () => {
-    const r = await toolGetShareSnippet({
-      bracket: true,
-      knockoutStage: 'R32',
-      now: KNOCKOUT_NOW,
-      adapter: overlayAdapter,
-    });
     expect(r.text).toContain('Mexico');
     expect(r.text).toContain('Ecuador');
   });
@@ -140,20 +122,6 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
     expect(sent).toContain(SENTENCE);
   });
 
-  it('get_share_snippet { team } and { bracket }: the card carries the sentence beside its body, and the key in data', async () => {
-    const next = await toolGetShareSnippet({ team: 'MEX', now: KNOCKOUT_NOW, adapter: partial });
-    expect(next.text).toContain('Ecuador');
-    expect(next.text).toContain(SENTENCE);
-    expect(next.data).toMatchObject({ partial: { omitted: 1 } });
-    const none = await toolGetShareSnippet({ team: 'ARG', now: KNOCKOUT_NOW, adapter: partial });
-    expect(none.text).toContain(SENTENCE);
-    expect(none.data).toMatchObject({ partial: { omitted: 1 } });
-    const bracket = await toolGetShareSnippet({ bracket: true, knockoutStage: 'R32', now: KNOCKOUT_NOW, adapter: partial });
-    expect(bracket.text).toContain('Mexico');
-    expect(bracket.text).toContain(SENTENCE);
-    expect(bracket.data).toMatchObject({ partial: { omitted: 1 } });
-  });
-
   it('a verdict without a count, and no verdict at all', async () => {
     const uncounted = await toolGetNextFixture({ team: 'MEX', now: KNOCKOUT_NOW, adapter: partialAdapter({ complete: false }) });
     expect(uncounted.text).toContain(UNCOUNTED);
@@ -169,7 +137,6 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
     for (const [name, r] of [
       ['get_next_fixture', await toolGetNextFixture({ team: 'MEX', now: KNOCKOUT_NOW, adapter: partial })],
       ['get_bracket', await toolGetBracket({ stage: 'R32', now: KNOCKOUT_NOW, adapter: partial })],
-      ['get_share_snippet', await toolGetShareSnippet({ team: 'MEX', now: KNOCKOUT_NOW, adapter: partial })],
     ] as const) {
       const res = z.object(OUTPUT_SCHEMAS[name as keyof typeof OUTPUT_SCHEMAS]).strict().safeParse(r.data);
       expect(res.success, `${name}: ${res.success ? '' : JSON.stringify(res.error.issues)}`).toBe(true);

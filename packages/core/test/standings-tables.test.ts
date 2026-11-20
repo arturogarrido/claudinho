@@ -18,8 +18,6 @@ import { EspnAdapter } from '../src/adapters/espn';
 import { attachFetchMeta, fetchMeta } from '../src/adapters/meta';
 import { STANDINGS_SHAPE } from '../src/competition';
 import { getBracket, getStandings } from '../src/live';
-import { tableShareCard } from '../src/share/cards';
-import { formatShareTable } from '../src/share/format';
 import { type GroupStandings, tableData, tableKeyArg, tableTitle } from '../src/standings';
 import { verdictExtras, verdictQualifiers } from '../src/verdict';
 import { MAX_GROUP_ROWS, MAX_GROUPS, parseEspnStandings } from '../src/trust/espn';
@@ -851,29 +849,5 @@ describe('what every surface is built from', () => {
     const whole = await read('uefa.euro');
     expect(verdictExtras(whole)).toEqual({});
     expect(verdictQualifiers(whole)).toEqual([]);
-  });
-
-  it('a share card: the title, the verdict, and the sentence beside the tables', async () => {
-    const league = await read('eng.1', 'LEAGUE');
-    const card = tableShareCard(league, 'LEAGUE');
-    expect(card.verdict).toEqual({});
-    expect(card.tables[0]).toMatchObject({ group: 'LEAGUE', label: '2026-27 English Premier League' });
-    const snippet = formatShareTable(card.input);
-    expect(snippet.split('\n')[0]).toBe('2026-27 English Premier League (LEAGUE) · standings');
-    expect(snippet).not.toContain('could not be read');
-
-    const short = tableShareCard(await read('uefa.euro', undefined, shortEuro()), undefined);
-    expect(short.verdict).toEqual({ incomplete: true });
-    const text = formatShareTable(short.input);
-    expect(text).toContain('Group A · standings');
-    expect(text).toContain('(Some tables could not be read — this is not the whole competition.)');
-    // A verdict's sentence is the localized one on every surface, a card included.
-    const es = tableShareCard(await read('uefa.euro', undefined, shortEuro()), undefined, undefined, 'es');
-    expect(formatShareTable(es.input)).toContain('(No se pudieron leer algunas tablas — esta no es la competición completa.)');
-    expect(formatShareTable(es.input)).toContain('Group A · standings');
-    // And it comes BEFORE the tables (what qualifies the body precedes it, since a card is cut from the end),
-    // not instead of them, and before the footer.
-    expect(text.indexOf('could not be read')).toBeLessThan(text.indexOf('Group A · standings'));
-    expect(text.indexOf('could not be read')).toBeLessThan(text.indexOf('Live data: ESPN'));
   });
 });

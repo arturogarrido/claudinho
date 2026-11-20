@@ -14,7 +14,7 @@ No sentence of the `AGENTS.md` "Conventions" bullets this guide serves ("The sta
 
 Every reader states the kind: the adapter passes its competition to both parsers, and the cache readers (`liveMatchesFromCache`, `sealFixtures`) take `teamKind(competition)` from their callers (`cmdPrompt`, `cmdHook`, `cmdVibe`, the refresher).
 
-The stage comes from the written grammar over the whole season slug (`stageFromSlug`, with `COMPETITION_KIND` and `SEASON_SLUG`): a league's season is `REGULAR` ("League"), a cup's league phase `LEAGUE` ("League phase"), play-offs `PO` ("Play-offs"), and anything the grammar does not know `OTHER` with the provider's words (`stageLabel`), or nothing at all when the slug is absent or unreadable. CLI `next`/`match` and the MCP text print it localized (`stageLabelI18n(lang, match)`), the cards in English (`stageLabel(match)`).
+The stage comes from the written grammar over the whole season slug (`stageFromSlug`, with `COMPETITION_KIND` and `SEASON_SLUG`): a league's season is `REGULAR` ("League"), a cup's league phase `LEAGUE` ("League phase"), play-offs `PO` ("Play-offs"), and anything the grammar does not know `OTHER` with the provider's words (`stageLabel`), or nothing at all when the slug is absent or unreadable. CLI `next`/`match` and the MCP text print it localized (`stageLabelI18n(lang, match)`).
 
 ### What the stage grammar was measured on
 

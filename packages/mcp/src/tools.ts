@@ -9,30 +9,20 @@ import {
   asFlavorLevel,
   fixturesByDate,
   formatDate,
-  formatShareSnippet,
-  formatShareTable,
-  formatShareBracket,
   formatBracketList,
-  bracketShareCard,
   dateNoneRead,
-  dateShareCard,
   dateUnreached,
   dayAttribution,
   liveNoneRead,
-  liveShareCard,
   marketsNoneRead,
   matchNoneReadSentence,
-  matchShareCard,
   matchWindowSentence,
   nationArg,
   nextHorizonSentence,
   nextNoneReadSentence,
-  nextShareCard,
-  tableShareCard,
   tableData,
   marketDisplayable,
   servedExtras,
-  type MatchShareCard,
   type NextFixtureResult,
   tableKeyArg,
   verdictExtras,
@@ -87,7 +77,6 @@ import {
   resolveMarketSource,
   resolveTz,
   t,
-  type ShareSnippetOptions,
   type Stage,
   statesPartial,
   teamKind,
@@ -123,21 +112,20 @@ export interface ToolResult {
    * The end of `text` that a cut at a length keeps (see `toContent`): the
    * attribution, when live data served the answer, and the non-affiliation
    * disclaimer. Always a suffix of `text`. Required, so no tool can be written
-   * without stating it: `disclaimed` returns it with the text it ends, and a
-   * share snippet's is its footer paragraph (`snippetFooter`).
+   * without stating it: `disclaimed` returns it with the text it ends.
    *
    * Since the cut takes the end of the body first, the rule for every text a
-   * cut can reach (a tool's, and a share card's): each sentence that QUALIFIES
+   * cut can reach (a tool's): each sentence that QUALIFIES
    * the body is printed BEFORE it, and nothing follows the body but this
    * footer. First the verdict's qualifiers, then the sentence counting the
    * shown rows a read did not serve, then the rest (a degraded line, a market
    * notice, a list's truncation, a roster note, a bracket's note) in the order
-   * they used to follow the body (`qualified`; the standings text and the share
-   * formatters keep the same order themselves). A table's own partial line is
+   * they used to follow the body (`qualified`; the standings text keeps the
+   * same order itself). A table's own partial line is
    * printed before that table.
    *
    * What a cut keeps of it is {@link cutFooter} when the result names one. The
-   * rule, for a DATE's list (`get_today`, the date card) on a read that was not
+   * rule, for a DATE's list (`get_today`) on a read that was not
    * whole: the cut keeps the disclaimer and DROPS the attribution line, because
    * the rows it drops may be every row the provider served (the attribution
    * was decided over the whole bounded list, not over what survives the cut).
@@ -442,9 +430,7 @@ function competitionOf(args: CommonOpts): string {
  * FIRST in its text (core `modeLine`; a tool's argument reads "from the
  * request") and the `competition` key in its data (core `selectionExtras`).
  * The selection is resolved BEFORE the answer is computed: a refused value is
- * a tool error with no adapter built and no request made. `line: false` for a
- * share card, which names its competition in its own title (the card is the
- * artifact, handed over verbatim).
+ * a tool error with no adapter built and no request made.
  *
  * With NOTHING chosen, the answer is not computed at all: no adapter is built
  * and nothing is read. The tool answers the `noCompetition` verdict (the first
@@ -457,7 +443,6 @@ async function said<A extends CommonOpts>(
   args: A,
   answer: (args: A) => Promise<ToolResult>,
   refusal: (args: A, sentence: string) => Record<string, unknown>,
-  { line }: { line: boolean } = { line: true },
 ): Promise<ToolResult> {
   const selection = selectionOf(args);
   if (selection.kind !== 'selected') {
@@ -471,7 +456,7 @@ async function said<A extends CommonOpts>(
   const r = await answer(args);
   return {
     ...r,
-    text: line ? `${modeLine(selection, args.lang, 'request')}\n${r.text}` : r.text,
+    text: `${modeLine(selection, args.lang, 'request')}\n${r.text}`,
     data: { ...(r.data as Record<string, unknown>), ...selectionExtras(selection) },
   };
 }
@@ -714,17 +699,6 @@ function disclaimed(
 function qualified(body: string, result: VerdictSource, lang?: string, ...also: Array<string | undefined>): string {
   const qualifiers = [...verdictQualifiers(result, lang), ...also.filter((s): s is string => !!s)];
   return qualifiers.length > 0 ? `${qualifiers.join('\n')}\n\n${body}` : body;
-}
-
-/**
- * A share snippet's footer, with the blank line before it: its last
- * paragraph. Core's share formatters end every snippet with ONE footer
- * paragraph (the attribution, the disclaimer with the hashtag, the run cue)
- * that holds no blank line, so a cut keeps all of it.
- */
-function snippetFooter(snippet: string): string {
-  const at = snippet.lastIndexOf('\n\n');
-  return at === -1 ? '' : snippet.slice(at);
 }
 
 /** today: fixtures for a date (default: today), with live overlay. */
@@ -1207,8 +1181,8 @@ async function nextAnswer(
   // a request (the candidates, or no such team). Off the bundled competition
   // the query goes through as asked: core resolves the club against the
   // competition's roster and the schedule ahead. Never the RAW argument: a
-  // direct call bypasses the input schema, and what is carried into the text,
-  // a card or a run cue is the bounded label.
+  // direct call bypasses the input schema, and what is carried into the text
+  // is the bounded label.
   const query = pin
     ? bundleApplies(adapter.competition)
       ? pin.code
@@ -1493,291 +1467,4 @@ async function marketAnswer(
       ...verdictExtras(fixtureRead),
     },
   };
-}
-
-/** Reliable, displayable signals keyed by id for a share snippet. Off → empty. */
-async function reliableSignalMap(
-  args: CommonOpts,
-  matches: readonly Match[],
-  /** The card's request clock (`requestClock`), read once by its branch. */
-  now: Date,
-): Promise<MarketSignalsResult> {
-  if (!marketsEnabled()) return { signals: new Map(), complete: true };
-  const relevant = matches.filter((m) => marketRelevant(m, now));
-  if (relevant.length === 0) return { signals: new Map(), complete: true };
-  const result = await cachedMarketSignals(args, relevant, now);
-  const out = new Map<string, MarketSignal>();
-  for (const m of relevant) {
-    const s = result.signals.get(m.id);
-    if (s && isReliableMarketSignal(s, { now }) && marketDisplayable(m, s)) out.set(m.id, s);
-  }
-  return { signals: out, complete: result.complete };
-}
-
-interface ShareArgs extends CommonOpts {
-  matchId?: string;
-  team?: string;
-  date?: string;
-  live?: boolean;
-  group?: string;
-  bracket?: boolean;
-  knockoutStage?: string;
-  style?: 'social' | 'compact';
-  includeHashtag?: boolean;
-  includeInstallLine?: boolean;
-  includeMarkets?: boolean;
-}
-
-function shareOptions(args: ShareArgs): ShareSnippetOptions {
-  return {
-    style: args.style === 'compact' ? 'compact' : 'social',
-    includeMarkets: marketsEnabled() && args.includeMarkets !== false,
-    includeHashtag: args.includeHashtag !== false,
-    includeInstallLine: args.includeInstallLine !== false,
-  };
-}
-
-/**
- * A match card as a tool result. The card comes assembled from core (the same
- * builders the CLI uses), verdict included; this only serializes it — and says
- * how many records there were before this surface bounded the list.
- */
-function shareResult(
-  card: MatchShareCard,
-  options: ShareSnippetOptions,
-  /** Records BEFORE capping, so the payload can say what it dropped. */
-  total = card.input.matches.length,
-  /** A date's card: on a read that was not whole a cut drops the attribution (see `ToolResult.footer`). Never the live card. */
-  date = false,
-): ToolResult {
-  const { input } = card;
-  const snippet = formatShareSnippet(input, options);
-  // The footer a cut keeps: the same card's footer with no provider line (one
-  // extra render, only for a date's card on a read that was not whole).
-  const cut =
-    date && input.source && statesPartial(card.verdict)
-      ? { cutFooter: snippetFooter(formatShareSnippet({ ...input, source: undefined }, options)) }
-      : {};
-  return {
-    // The snippet is self-contained: it carries its own non-affiliation
-    // disclaimer (and, for any market line, the "informational only" caveat +
-    // attribution), so it is deliberately NOT wrapped with `disclaimed` —
-    // that would duplicate the disclaimer inside a paste-ready artifact.
-    text: snippet,
-    footer: snippetFooter(snippet),
-    ...cut,
-    data: {
-      kind: card.kind,
-      target: card.target,
-      ...(card.team ? { team: card.team } : {}),
-      ...(card.candidates ? { candidates: card.candidates } : {}),
-      source: input.source ?? null,
-      // The card's read's plain fields (the ids it held, beside `partial` only).
-      ...card.readFields,
-      degraded: input.degraded ?? false,
-      informationalOnly: true,
-      style: options.style ?? 'social',
-      snippet,
-      count: total,
-      truncated: total > input.matches.length,
-      matches: input.matches,
-      marketSignals: Object.fromEntries(
-        [...(input.marketSignals ?? new Map<string, MarketSignal>())].map(([id, s]) => [
-          id,
-          marketData(s),
-        ]),
-      ),
-      marketComplete: input.marketComplete ?? true,
-      // The span an empty card says was searched (horizon, window): plain fields.
-      ...card.span,
-      // The verdict the card's note stands for (e.g. not available for this competition).
-      ...card.verdict,
-    },
-  };
-}
-
-/**
- * share_snippet: a polished, copy-pasteable card — the same artifact as the CLI
- * `claudinho share`. Routing precedence: live > group (standings) > matchId >
- * team > date (default today). Plain text, no links; the non-affiliation
- * disclaimer and any market caveat are baked into the snippet, so the model can
- * hand `text` to the user verbatim.
- */
-export function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
-  // The card names its competition in its title: no mode line before it.
-  // With nothing chosen, the kind asked (the routing precedence below) and the sentence as its snippet.
-  return said(args, shareAnswer, (a, sentence) => ({ kind: shareKindAsked(a), snippet: sentence }), { line: false });
-}
-
-/** The card a request asks for, by `shareAnswer`'s routing precedence: live > group > bracket > matchId > team > date. */
-function shareKindAsked(args: ShareArgs): string {
-  if (args.live) return 'live';
-  if (args.group) return 'table';
-  if (args.bracket) return 'bracket';
-  if (args.matchId) return 'match';
-  if (args.team) return 'next';
-  return 'today';
-}
-async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
-  const options = shareOptions(args);
-  // Per-call opt-out: `includeMarkets: false` skips the provider ENTIRELY (no
-  // fetch) and yields no market data — not merely suppressed rendering. The env
-  // opt-out (CLAUDINHO_MARKETS=off) is handled inside reliableSignalMap.
-  const signalsFor = (ms: readonly Match[], now: Date): Promise<MarketSignalsResult> =>
-    args.includeMarkets === false
-      ? Promise.resolve({ signals: new Map(), complete: true })
-      : reliableSignalMap(args, ms, now);
-
-  // The competition goes on the card: its title names it and its run cue
-  // selects it. The SELECTION's (what the answer is said to be for), like the
-  // mode line and the `competition` key.
-  const competition = selectedOf(args).slug;
-  const where = { tz: args.tz, locale: args.lang, competition };
-
-  // live: matches in play right now (no market enrichment, matching the CLI).
-  if (args.live) {
-    const adapter = resolveAdapter(args);
-    const live = await getLiveMatches(adapter, requestClock(adapter, args.now));
-    // Bounded like the date branch: a share card is returned through MCP
-    // before a human ever sees it. The count is STATED, not silently lost.
-    const shownLive = boundedRecords(live.matches);
-    return shareResult(
-      liveShareCard(live, where, {
-        matches: shownLive.items,
-        // The cap qualifies the list: in the card's note, after the verdict.
-        cap: truncationNote(shownLive),
-      }),
-      { ...options, includeMarkets: false },
-      live.matches.length,
-    );
-  }
-
-  // a group's standings table (facts only; no market lines).
-  if (args.group) {
-    const group = args.group.toUpperCase();
-    const standings = await getStandings(resolveAdapter(args), group);
-    // Capped like the structured payload beside it. Bounding `data.tables`
-    // while the rendered SNIPPET came from the full list meant the surface a
-    // reader actually sees was the unbounded one.
-    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang, competition);
-    const snippet = formatShareTable(card.input, options);
-    return {
-      text: snippet,
-      footer: snippetFooter(snippet),
-      data: {
-        kind: 'table',
-        target: 'table',
-        group,
-        source: card.source ?? null,
-        degraded: card.degraded,
-        informationalOnly: true,
-        snippet,
-        // The structured card keeps the verdict the snippet warns about (A01).
-        // (No batch verdict here: this card is always for ONE key, and a keyed
-        // read that found its table carries only that table's own `partial`.)
-        tables: card.tables,
-      },
-    };
-  }
-
-  // knockout bracket card (facts only; no market lines).
-  if (args.bracket) {
-    const stageFilter = args.knockoutStage?.toUpperCase();
-    if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
-      return {
-        ...disclaimed(
-          t(args.lang, 'bracket.unknownStage', { stage: args.knockoutStage ?? '' }),
-          undefined,
-          args.lang,
-        ),
-        data: { kind: 'bracket', view: null },
-      };
-    }
-    const bracket = await getBracket(
-      resolveAdapter(args),
-      stageFilter
-        ? { stage: stageFilter as Stage, lang: args.lang }
-        : { lang: args.lang },
-    );
-    const card = bracketShareCard(bracket, stageFilter, args.lang, competition);
-    const snippet = formatShareBracket(card.input, { ...options, locale: args.lang, tz: args.tz });
-    return {
-      text: snippet,
-      footer: snippetFooter(snippet),
-      data: {
-        kind: 'bracket',
-        target: 'bracket',
-        ...(card.stage ? { stage: card.stage } : {}),
-        source: card.source ?? null,
-        degraded: card.degraded,
-        informationalOnly: true,
-        snippet,
-        view: card.input.view,
-        ...card.verdict,
-      },
-    };
-  }
-
-  // a single match by id, with live overlay (±1-day window — see toolGetMatch).
-  if (args.matchId) {
-    const adapter = resolveAdapter(args);
-    // The request's clock (the one given, else the adapter's read clock), read once: the read and the market.
-    const now = requestClock(adapter, args.now);
-    const found = await getMatchById(adapter, args.matchId, now);
-    const market = await signalsFor(found.match ? [found.match] : [], now);
-    return shareResult(matchShareCard(found, args.matchId, market, where), options);
-  }
-
-  // a team's next fixture, live-resolved across the knockout phase (+ market read).
-  if (args.team) {
-    const adapter = resolveAdapter(args);
-    // The World Cup takes a nation's code or name, resolved as get_next_fixture
-    // resolves it (`nationArg`): a name that is no single nation is the
-    // candidates card, or the no-such-team card, with no request. Off the
-    // bundle the query goes through as asked (core resolves the club). The
-    // bounded label, never the raw argument: it is pasted into the run cue.
-    const query = humanLabel(args.team, 40);
-    const asked = bundleApplies(adapter.competition) ? nationArg(query) : { code: query };
-    const code = 'code' in asked ? asked.code : query;
-    // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
-    // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
-    // The request's clock (the one given, else the adapter's read clock), read once: the read and the market.
-    const now = requestClock(adapter, args.now);
-    const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, now) : asked.answer;
-    const market = await signalsFor(next.fixture ? [next.fixture] : [], now);
-    return shareResult(nextShareCard(next, code, market, where), options);
-  }
-
-  // a date's matches (default: today). The request's clock (the one given,
-  // else the adapter's read clock), read once: the day and the market.
-  const adapter = resolveAdapter(args);
-  const now = requestClock(adapter, args.now);
-  const date = args.date ?? localDate(now.toISOString(), args.tz);
-  const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
-  const todays = fixturesByDate(date, day.matches, args.tz);
-  // Bounded like every other model-facing payload — a share card is
-  // returned through MCP before a human ever sees it.
-  const shownToday = boundedRecords(todays);
-  const market = await signalsFor(shownToday.items, now);
-  return shareResult(
-    dateShareCard(
-      {
-        date,
-        explicit: !!args.date,
-        matches: shownToday.items,
-        degraded: day.degraded,
-        source: day.source,
-        // The cap qualifies the list: in the card's note, after the verdict.
-        cap: truncationNote(shownToday),
-        // The read decides what an empty day says (whether it merged the
-        // bundled schedule) and the card's attribution, over the bounded list.
-        read: day,
-      },
-      market,
-      where,
-    ),
-    options,
-    todays.length,
-    true,
-  );
 }

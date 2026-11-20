@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countdown, formatKickoff, localDate } from '../src/time';
+import { countdown, formatDate, formatKickoff, localDate } from '../src/time';
 
 describe('countdown', () => {
   const now = new Date('2026-06-11T12:00:00Z');
@@ -40,6 +40,23 @@ describe('formatKickoff', () => {
     expect(s).toMatch(/Jul/);
     expect(s).toMatch(/4/);
     expect(s).toMatch(/17/);
+  });
+});
+
+describe('formatDate', () => {
+  // 23:30Z on Jun 29 is already 08:30 on Jun 30 in Tokyo (UTC+9): the market headers date a fixture by this.
+  const iso = '2026-06-29T23:30:00Z';
+  it('renders the short calendar date in the requested timezone', () => {
+    expect(formatDate(iso, { tz: 'UTC', locale: 'en' })).toBe('Jun 29');
+    expect(formatDate(iso, { tz: 'Asia/Tokyo', locale: 'en' })).toBe('Jun 30');
+  });
+  it('renders it in the requested language', () => {
+    const es = formatDate(iso, { tz: 'UTC', locale: 'es' });
+    expect(es).toBe('29 jun');
+    expect(es).not.toBe(formatDate(iso, { tz: 'UTC', locale: 'en' }));
+  });
+  it('says the unknown-time dash for a date it cannot parse, never a guessed one', () => {
+    expect(formatDate('not a date', { tz: 'UTC', locale: 'en' })).toBe('—');
   });
 });
 

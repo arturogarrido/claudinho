@@ -144,8 +144,8 @@ export function boundedRecords<T>(rows: T[], max = MAX_LIST_MATCHES): BoundedLis
 /**
  * The sentence to state when `capRecords` dropped something, "(showing N of
  * M — list truncated)": a sentence that QUALIFIES the body, so every caller
- * says it before the body (`get_standings`, the dated `get_market_signal`, the
- * live and date cards' note), never after it or in a title.
+ * says it before the body (`get_standings`, the dated `get_market_signal`),
+ * never after it or in a title.
  *
  * A cap that drops records silently reads as a complete list, which is the same
  * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns

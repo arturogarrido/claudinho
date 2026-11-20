@@ -29,7 +29,6 @@ import {
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
-  toolGetShareSnippet,
   toolGetStandings,
   toolGetTeam,
   toolGetToday,
@@ -122,7 +121,7 @@ function expectValid(tool: keyof typeof OUTPUT_SCHEMAS, data: unknown) {
 }
 
 describe('MCP tool output schemas', () => {
-  it('OUTPUT_SCHEMAS covers exactly the ten tools', () => {
+  it('OUTPUT_SCHEMAS covers exactly the nine tools', () => {
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual(
       [
         'get_bracket',
@@ -130,7 +129,6 @@ describe('MCP tool output schemas', () => {
         'get_market_signal',
         'get_match',
         'get_next_fixture',
-        'get_share_snippet',
         'get_standings',
         'get_team',
         'get_today',
@@ -286,61 +284,6 @@ describe('MCP tool output schemas', () => {
     });
   });
 
-  describe('get_share_snippet', () => {
-    it('live', async () => {
-      const r = await toolGetShareSnippet({ live: true, adapter: fakeAdapter({ live: [liveMatch()] }) });
-      expectValid('get_share_snippet', r.data);
-    });
-    it('group standings (live)', async () => {
-      const r = await toolGetShareSnippet({ group: 'A', adapter: fakeAdapter({ standings: [A_TABLE] }) });
-      expectValid('get_share_snippet', r.data);
-    });
-    it('group standings (degraded roster)', async () => {
-      const r = await toolGetShareSnippet({ group: 'A', adapter: fakeAdapter({}) });
-      expectValid('get_share_snippet', r.data);
-    });
-    it('bracket', async () => {
-      const r = await toolGetShareSnippet({ bracket: true, adapter: fakeAdapter({ window: [] }), now: TEST_NOW });
-      expectValid('get_share_snippet', r.data);
-    });
-    it('bracket filtered stage', async () => {
-      const r = await toolGetShareSnippet({ bracket: true, knockoutStage: 'R32', adapter: fakeAdapter({ window: [] }), now: TEST_NOW });
-      expectValid('get_share_snippet', r.data);
-    });
-    it('bracket unknown stage (view: null)', async () => {
-      const r = await toolGetShareSnippet({ bracket: true, knockoutStage: 'ZZ', adapter: fakeAdapter({}) });
-      expectValid('get_share_snippet', r.data);
-    });
-    it('match by id', async () => {
-      const r = await toolGetShareSnippet({
-        matchId: '760415',
-        adapter: fakeAdapter({ window: [liveMatch()] }),
-        marketProvider: synth(),
-        now: TEST_NOW,
-      });
-      expectValid('get_share_snippet', r.data);
-    });
-    it("team next fixture", async () => {
-      const r = await toolGetShareSnippet({
-        team: upcoming().home.code,
-        adapter: fakeAdapter({ window: [] }),
-        marketProvider: synth(),
-        now: TEST_NOW,
-      });
-      expectValid('get_share_snippet', r.data);
-    });
-    it('today (date default)', async () => {
-      const up = upcoming();
-      const r = await toolGetShareSnippet({
-        date: up.kickoff.slice(0, 10),
-        adapter: fakeAdapter({ window: [up] }),
-        marketProvider: synth(),
-        now: TEST_NOW,
-      });
-      expectValid('get_share_snippet', r.data);
-    });
-  });
-
   describe('get_team', () => {
     it('exact code', () => expectValid('get_team', toolGetTeam({ query: 'MEX' }).data));
     it('exact name', () => expectValid('get_team', toolGetTeam({ query: 'Mexico' }).data));
@@ -390,12 +333,6 @@ describe('MCP tool output schemas', () => {
         ['get_market_signal', () => toolGetMarketSignal({})],
         ['get_market_signal', () => toolGetMarketSignal({ matchId: '760415' })],
         ['get_market_signal', () => toolGetMarketSignal({ team: 'MEX' })],
-        ['get_share_snippet', () => toolGetShareSnippet({ live: true })],
-        ['get_share_snippet', () => toolGetShareSnippet({ group: 'A' })],
-        ['get_share_snippet', () => toolGetShareSnippet({ bracket: true })],
-        ['get_share_snippet', () => toolGetShareSnippet({ matchId: '760415' })],
-        ['get_share_snippet', () => toolGetShareSnippet({ team: 'MEX' })],
-        ['get_share_snippet', () => toolGetShareSnippet({})],
         ['list_competitions', () => toolListCompetitions({})],
       ];
       for (const [tool, call] of cases) {
@@ -404,20 +341,6 @@ describe('MCP tool output schemas', () => {
         if (tool === 'list_competitions') expect((data as { current: unknown }).current, tool).toBeNull();
         else expect(data, tool).toMatchObject(none);
       }
-      // The kind a share card asks for, by the routing precedence.
-      const kinds = await Promise.all(
-        [{ live: true }, { group: 'A' }, { bracket: true }, { matchId: '1' }, { team: 'MEX' }, {}].map(
-          async (a) => ((await toolGetShareSnippet(a)).data as { kind: string }).kind,
-        ),
-      );
-      expect(kinds).toEqual(['live', 'table', 'bracket', 'match', 'next', 'today']);
-      // Asked for two at once, the kind the card would be (live > group > bracket > matchId > team > date).
-      const both = await Promise.all(
-        [{ live: true, group: 'A' }, { group: 'A', bracket: true }, { bracket: true, matchId: '1' }, { matchId: '1', team: 'MEX' }, { team: 'MEX', date: '2026-10-10' }].map(
-          async (a) => ((await toolGetShareSnippet(a)).data as { kind: string }).kind,
-        ),
-      );
-      expect(both).toEqual(['live', 'table', 'bracket', 'match', 'next']);
       // A keyed standings read's empty shape is `null`, every table's `[]`.
       expect(((await toolGetStandings({ group: 'A' })).data as { tables: unknown }).tables).toBeNull();
       expect(((await toolGetStandings({})).data as { tables: unknown }).tables).toEqual([]);

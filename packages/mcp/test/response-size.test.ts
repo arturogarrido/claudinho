@@ -10,7 +10,6 @@
  * Applied at the single place every tool's payload leaves the server, so a tool
  * added later cannot forget it.
  */
-import { FakeMarketProvider, type ProviderAdapter, SHARE_DISCLAIMER } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import {
@@ -19,7 +18,7 @@ import {
   OUTPUT_SCHEMAS,
   toContent,
 } from '../src/server';
-import { toolGetShareSnippet, toolGetTeam } from '../src/tools';
+import { toolGetTeam } from '../src/tools';
 
 const events = Array.from({ length: 128 }, (_, i) => ({
   type: 'GOAL', minute: i % 90, teamCode: 'MEX', player: 'A'.repeat(90),
@@ -51,11 +50,11 @@ describe('one tool response cannot flood model context', () => {
     expect(() => z.object(OUTPUT_SCHEMAS.get_today).strict().parse(bounded)).not.toThrow();
   });
 
-  it('bounds shapes that are not `matches` — bracket, standings, share', () => {
+  it('bounds shapes that are not `matches` — bracket, standings, a long string field', () => {
     // The first version special-cased a top-level `matches` array, so every
-    // other tool's shape walked past it. A 300 KB share snippet came back whole.
-    const share = { kind: 'date', target: '2026-06-11', snippet: 'X'.repeat(300_000) };
-    expect(JSON.stringify(boundResponse(share)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+    // other tool's shape walked past it. A 300 KB string field came back whole.
+    const long = { kind: 'date', target: '2026-06-11', text: 'X'.repeat(300_000) };
+    expect(JSON.stringify(boundResponse(long)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
     const bracket = { stages: Array.from({ length: 8 }, (_, i) => ({ stage: `S${i}`,
       matches: Array.from({ length: 400 }, (_, k) => ({ id: String(k), note: 'Y'.repeat(400) })) })) };
     expect(JSON.stringify(boundResponse(bracket)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
@@ -197,34 +196,11 @@ describe('the response cap is a bound, not a suggestion', () => {
  * A text cut at a length loses its END, which is where every tool's footer is:
  * the attribution and the non-affiliation disclaimer. Each tool states its
  * footer (`ToolResult.footer`), and the cut keeps it. `get_standings` is pinned
- * in league-tables.test.ts; this pins the other footer, a share snippet's (its
- * last paragraph, from core's formatters), and the error path.
+ * in league-tables.test.ts, `get_today` and `get_live` in
+ * partial-surfaces.test.ts and partial-surfaces-extra.test.ts; this pins a cut
+ * through a character, and the error path.
  */
 describe('a cut keeps the footer', () => {
-  const offline: ProviderAdapter = {
-    name: 'fake',
-    competition: 'fifa.world',
-    capabilities: { push: false, latencyHintSec: 0 },
-    fetchByDate: async () => [],
-    fetchLive: async () => [],
-    fetchWindow: async () => [],
-  };
-
-  it('of every share snippet: the date, table and bracket cards', async () => {
-    for (const args of [{ date: '2026-06-11' }, { group: 'A' }, { bracket: true }]) {
-      const r = await toolGetShareSnippet({ ...args, tz: 'UTC', adapter: offline, marketProvider: new FakeMarketProvider() });
-      const label = JSON.stringify(args);
-      expect(r.text.endsWith(r.footer), label).toBe(true);
-      expect(r.footer, label).toContain(SHARE_DISCLAIMER);
-      expect(r.footer, label).toContain('Try it:');
-      const long = { ...r, text: `${'x'.repeat(40_000)}${r.text}` };
-      const sent = toContent(long).content[0]?.text ?? '';
-      expect(sent.length, label).toBeLessThanOrEqual(32_000);
-      expect(sent, label).toContain('(truncated)');
-      expect(sent.endsWith(r.footer), label).toBe(true);
-    }
-  });
-
   it('a cut never leaves half a character', () => {
     // Every character here is two UTF-16 units, so a cut at a fixed length
     // lands inside one for one of the two paddings.

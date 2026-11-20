@@ -1,7 +1,7 @@
 /**
  * The selection on the CLI (0.11 · 2.5a): `--competition <alias|slug>` at the
  * edge, the mode line on every competition-answering text answer (never on
- * `--json`, never on `share`), the `competition` key in every `--json`, the
+ * `--json`), the `competition` key in every `--json`, the
  * ambient commands containing a bad selection, `team` as the World Cup's
  * roster whatever the selection. The stderr drift warning is gone.
  */
@@ -11,7 +11,7 @@ import type { Match, ProviderAdapter } from '@claudinho/core';
 import { FakeMarketProvider, t as coreT } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeState } from '../src/cache';
-import { cmdBracket, cmdHook, cmdLive, cmdMatch, cmdNext, cmdPrompt, cmdShare, cmdTable, cmdTeam, cmdToday, cmdVibe, InputError } from '../src/commands';
+import { cmdBracket, cmdHook, cmdLive, cmdMatch, cmdNext, cmdPrompt, cmdTable, cmdTeam, cmdToday, cmdVibe, InputError } from '../src/commands';
 import { type CliConfig, resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -106,7 +106,7 @@ describe('the edge: resolveConfig', () => {
 });
 
 describe('an interactive command under a refused selection', () => {
-  it('today, live, next, match, table, bracket, share: an input error naming the aliases, no request', async () => {
+  it('today, live, next, match, table, bracket: an input error naming the aliases, no request', async () => {
     const cfg = cfgOf({ competition: 'foo' });
     const calls: Array<() => Promise<void>> = [
       () => cmdToday('2026-10-04', ctxOf(cfg)),
@@ -115,7 +115,6 @@ describe('an interactive command under a refused selection', () => {
       () => cmdMatch('800000001', ctxOf(cfg)),
       () => cmdTable(undefined, ctxOf(cfg)),
       () => cmdBracket(undefined, {}, ctxOf(cfg)),
-      () => cmdShare('live', undefined, {}, ctxOf(cfg)),
     ];
     for (const call of calls) {
       await expect(call()).rejects.toBeInstanceOf(InputError);
@@ -191,7 +190,6 @@ describe('the mode line', () => {
       ['match', () => cmdMatch('800000001', ctxOf(cfgOf({ competition: 'premier-league', json: true })))],
       ['table', () => cmdTable(undefined, ctxOf(cfgOf({ competition: 'premier-league', json: true })))],
       ['bracket', () => cmdBracket(undefined, {}, ctxOf(cfgOf({ competition: 'premier-league', json: true })))],
-      ['share', () => cmdShare('live', undefined, {}, ctxOf(cfgOf({ competition: 'premier-league', json: true })))],
     ] as const) {
       writes = [];
       await call();
@@ -201,18 +199,6 @@ describe('the mode line', () => {
     writes = [];
     await cmdToday('2026-10-04', ctxOf(cfgOf({ competition: 'fifa.friendly', json: true })));
     expect((JSON.parse(text()) as Record<string, unknown>).competition).toEqual({ slug: 'fifa.friendly', name: 'fifa.friendly', chosenBy: 'flag', experimental: true });
-  });
-
-  it('never on share: the card is the artifact, its title names the competition, its cue selects it', async () => {
-    await cmdShare('live', undefined, {}, ctxOf(cfgOf({ competition: 'premier-league' })));
-    expect(text()).not.toContain('from the command line');
-    expect(lines().find((l) => l.trim() !== '')).toContain('Premier League');
-    expect(text()).toContain('--competition premier-league');
-    expect(text()).not.toContain('CLAUDINHO_COMPETITION');
-    writes = [];
-    await cmdShare('2026-10-04', undefined, {}, ctxOf(cfgOf()));
-    expect(lines().find((l) => l.trim() !== '')).toContain('World Cup');
-    expect(text()).toContain('--competition world-cup');
   });
 });
 
@@ -257,14 +243,13 @@ describe('team: the World Cup\'s roster, whatever the selection', () => {
 });
 
 describe('an injected adapter for another competition is refused before any read (the CLI\'s seam, the MCP seam\'s sibling)', () => {
-  it('live, today and share: the body and the label never disagree', async () => {
+  it('live and today: the body and the label never disagree', async () => {
     let reads = 0;
     const counting: ProviderAdapter = { ...adapterFor('eng.1'), async fetchByDate() { reads++; return []; }, async fetchLive() { reads++; return []; }, async fetchWindow() { reads++; return []; } };
     const cfg = cfgOf({ competition: 'serie-a' });
     const ctx = { cfg, t: makeT('en'), adapter: counting, now: NOW, marketProvider: new FakeMarketProvider() };
     await expect(cmdLive(ctx)).rejects.toThrow(/eng\.1/);
     await expect(cmdToday('2026-10-04', ctx)).rejects.toThrow(/ita\.1|serie-a/);
-    await expect(cmdShare('live', undefined, {}, ctx)).rejects.toThrow(/eng\.1/);
     expect(reads).toBe(0);
     expect(text()).toBe('');
     // Under its own competition the same adapter answers.

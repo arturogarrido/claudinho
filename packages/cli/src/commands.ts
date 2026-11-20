@@ -11,26 +11,17 @@ import {
   parseDayArg,
   resolveDayArg,
   weekdayShort,
-  formatShareSnippet,
-  formatShareTable,
-  formatShareBracket,
   formatBracketList,
   formatBracketTree,
-  bracketShareCard,
   dateNoneRead,
-  dateShareCard,
   dateUnreached,
   dayAttribution,
   liveNoneRead,
-  liveShareCard,
   marketsNoneRead,
   matchNoneReadSentence,
-  matchShareCard,
   matchWindowSentence,
   nextHorizonSentence,
   nextNoneReadSentence,
-  nextShareCard,
-  tableShareCard,
   tableData,
   tableKeyArg,
   tableTitle,
@@ -82,7 +73,7 @@ import {
   matchFlair,
   matchFlairs,
   matchLocation,
-  SHARE_HASHTAG,
+  HASHTAG,
   resolveMarketSource,
   resolveTz,
   scoreline,
@@ -145,19 +136,12 @@ import {
 import { readMarketCache, writeMarketCache } from './marketCache';
 import { bumpRunCount, REPO_URL, shouldNudge } from './starNudge';
 import { TAGLINE } from './tagline';
-import { copyToClipboard } from './clipboard';
 import type {
-  BracketShareCard,
   Match,
-  MatchShareCard,
   MarketProvider,
   MarketSignal,
   MarketSignalOptions,
   ProviderAdapter,
-  ShareSnippetOptions,
-  TableShareCard,
-  ShareBracketOptions,
-  ShareStyle,
 } from '@claudinho/core';
 import { backoffInEffect, readCurrentState } from './cache';
 import { DISCOVERY_TTL_MS, RELEVANT_BACK_MS, scheduleView } from './scheduleSlice';
@@ -204,8 +188,6 @@ type Ctx = {
   t: Translator;
   adapter?: ProviderAdapter;
   marketProvider?: MarketProvider;
-  /** Injection seam for `share --copy` so tests never touch the real clipboard. */
-  copy?: (text: string) => boolean;
   /** Injection seam for time-dependent gates (market relevance, live windows). */
   now?: Date;
 };
@@ -380,8 +362,7 @@ function emitJson(data: unknown): void {
  * came from when it was the flag or the environment (core `modeLine`). ONE
  * dimmed line on every competition-answering TEXT answer, right after its
  * header (first, where the answer has none). Never on `--json`, which carries
- * the `competition` key instead ({@link competitionKey}); never on `share`,
- * whose card names its competition in its title.
+ * the `competition` key instead ({@link competitionKey}).
  */
 function modeOut(cfg: CliConfig, c: Painter): void {
   out(modeRow(cfg, c));
@@ -476,8 +457,8 @@ function precheck(
 }
 
 /**
- * The calendar day a day-taking command (`today`, `share <date>`, `markets
- * <date>`) asks for, and today's, both in the viewer's zone at the request's
+ * The calendar day a day-taking command (`today`, `markets <date>`) asks
+ * for, and today's, both in the viewer's zone at the request's
  * clock: the argument through core's one grammar (`parseDayArg`, already asked
  * by {@link precheck} before any request), today when there is none.
  */
@@ -490,7 +471,7 @@ function askedDay(arg: string | undefined, now: Date, tz: string | undefined, t:
 }
 
 /**
- * What a team-taking command (`next`, `share next`, `markets next`) is about,
+ * What a team-taking command (`next`, `markets next`) is about,
  * by ONE precedence: the argument, then `CLAUDINHO_TEAM` (an empty one is
  * absent), then the saved pin (`cfg.pin`: a pin belongs to its competition,
  * core `pinUnder`, so it is set whenever the selected competition is the
@@ -600,7 +581,7 @@ function teamQuery(raw: string, usage: string, t: Translator, competition: strin
 }
 
 /**
- * The next fixture `next` and `share next` answer with, for the team asked
+ * The next fixture `next` answers with, for the team asked
  * ({@link teamAsked}), and the label the answer is said about: a query through
  * `getNextFixtureForTeam` (core resolves it), the saved pin through
  * `nextFixtureForPin` (by its id, or by code for the World Cup's nations; no
@@ -1050,8 +1031,8 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
  * (offline). It reads the World Cup's roster whatever the selection, so it is
  * not a competition-answering command: no mode line, no `competition` key.
  * Under an EXPLICIT selection of another competition (the flag or the
- * environment) it is refused, saying where a team's name goes (`next`, `share
- * next`) and how to reach the roster (`--competition world-cup`); a saved
+ * environment) it is refused, saying where a team's name goes (`next`) and
+ * how to reach the roster (`--competition world-cup`); a saved
  * choice, nothing chosen, and an explicit World Cup answer, the roster named.
  */
 export function cmdTeam(query: string | undefined, ctx: Ctx): void {
@@ -2102,306 +2083,6 @@ export async function cmdMarkets(
   out(c.dim(MARKET_INFO));
 }
 
-/* ──────────────────────────── share ──────────────────────────── */
-
-type ShareCliOpts = {
-  style?: string;
-  /** false when --no-hashtag is passed (commander negatable). */
-  hashtag?: boolean;
-  /** false when --no-install-line is passed (commander negatable). */
-  installLine?: boolean;
-  /** true when --copy is passed. */
-  copy?: boolean;
-};
-
-/** Only `social`/`compact` ship in v1; anything else falls back to `social`. */
-function pickShareStyle(v: string | undefined): ShareStyle {
-  return v === 'compact' ? 'compact' : 'social';
-}
-
-/**
- * Reliable signals for a shareable snippet. Snippets are public artifacts, so
- * this fails closed via the strict default-on gate (`reliableMarketSignals`,
- * which also honors `--no-markets`). The `marketDisplayable` pass is a defensive
- * re-assert — the reliability gate already implies it (unambiguous + has a
- * favorite + sane distribution) — kept so the two gates can diverge safely.
- */
-async function reliableShareSignals(
-  ctx: Ctx,
-  matches: Match[],
-  now: Date,
-): Promise<MarketSignalsResult> {
-  const raw = await reliableMarketSignals(ctx, matches, now);
-  const out = new Map<string, MarketSignal>();
-  for (const [id, s] of raw.signals) {
-    const m = matches.find((x) => x.id === id);
-    if (m && marketDisplayable(m, s)) out.set(id, s);
-  }
-  return { signals: out, complete: raw.complete };
-}
-
-/**
- * Emit one share card — the snippet as text, or the snippet plus its structured
- * twin as JSON — then best-effort copy the snippet to the clipboard.
- *
- * ONE emitter for every kind of card. Three near-copies used to differ only in
- * which fields their JSON carried, and each had to remember the card's verdict
- * for itself (a review found `share --json` dropping one twice). The cards come
- * assembled from core (`*ShareCard`), verdict included; the JSON builders below
- * only fix the key order `--json` has always had.
- */
-function emitCard(ctx: Ctx, snippet: string, json: Record<string, unknown>, copy: boolean): void {
-  if (ctx.cfg.json) emitJson(json);
-  else out(snippet);
-  // Clipboard is additive and orthogonal to the output mode; its status goes to
-  // stderr so stdout stays a clean, pasteable artifact (and clean JSON).
-  if (copy) {
-    const ok = (ctx.copy ?? copyToClipboard)(snippet);
-    process.stderr.write(
-      (ok
-        ? 'Copied share snippet to clipboard.'
-        : 'Clipboard unavailable; printed snippet instead.') + '\n',
-    );
-  }
-}
-
-/** A match card: today's fixtures, live matches, a team's next fixture, one match. */
-function emitMatchCard(
-  ctx: Ctx,
-  card: MatchShareCard,
-  options: ShareSnippetOptions,
-  copy: boolean,
-): void {
-  const snippet = formatShareSnippet(card.input, options);
-  emitCard(
-    ctx,
-    snippet,
-    {
-      kind: card.kind,
-      target: card.target,
-      ...(card.team ? { team: card.team } : {}),
-      ...(card.candidates ? { candidates: card.candidates } : {}),
-      source: card.input.source ?? null,
-      // The card's read's plain fields (the ids it held, beside `partial` only).
-      ...card.readFields,
-      degraded: card.input.degraded ?? false,
-      informationalOnly: true,
-      style: options.style ?? 'social',
-      snippet,
-      matches: card.input.matches,
-      marketComplete: card.input.marketComplete ?? true,
-      marketSignals: Object.fromEntries(card.input.marketSignals ?? new Map()),
-      // The span an empty card says was searched (horizon, window): plain fields.
-      ...card.span,
-      // The structured card keeps the verdict the snippet's note carries.
-      ...card.verdict,
-      ...competitionKey(ctx.cfg),
-    },
-    copy,
-  );
-}
-
-/** A standings card. */
-function emitTableCard(
-  ctx: Ctx,
-  card: TableShareCard,
-  options: ShareSnippetOptions,
-  copy: boolean,
-): void {
-  const snippet = formatShareTable(card.input, options);
-  emitCard(
-    ctx,
-    snippet,
-    {
-      kind: 'table',
-      target: 'table',
-      ...(card.group ? { group: card.group } : {}),
-      source: card.source ?? null,
-      degraded: card.degraded,
-      informationalOnly: true,
-      snippet,
-      // The structured card keeps the verdict the snippet warns about (A01).
-      tables: card.tables,
-      ...card.verdict,
-      ...competitionKey(ctx.cfg),
-    },
-    copy,
-  );
-}
-
-/** A knockout bracket card. */
-function emitBracketCard(
-  ctx: Ctx,
-  card: BracketShareCard,
-  options: ShareBracketOptions,
-  copy: boolean,
-): void {
-  const snippet = formatShareBracket(card.input, options);
-  emitCard(
-    ctx,
-    snippet,
-    {
-      kind: 'bracket',
-      target: 'bracket',
-      ...(card.stage ? { stage: card.stage } : {}),
-      source: card.source ?? null,
-      degraded: card.degraded,
-      informationalOnly: true,
-      snippet,
-      view: card.input.view,
-      // Top-level, like `bracket --json`.
-      ...card.verdict,
-      ...competitionKey(ctx.cfg),
-    },
-    copy,
-  );
-}
-
-/**
- * `claudinho share [target] [team]` — a polished, copy-pasteable match snippet
- * for chats, social posts, READMEs, and issues.
- *   share / share today      → today's fixtures
- *   share live               → matches in play
- *   share 2026-06-11         → that date's fixtures
- *   share 760415             → one match
- *   share next MEX           → a team's next fixture
- * Market lines come from the approved copy bank and use the same reliable gate
- * as default views; the non-affiliation disclaimer is always included. Snippets
- * are plain text (no ANSI) so they paste cleanly everywhere.
- */
-export async function cmdShare(
-  target: string | undefined,
-  team: string | undefined,
-  opts: ShareCliOpts,
-  ctx: Ctx,
-): Promise<void> {
-  const { cfg, t } = ctx;
-  const baseOptions: ShareSnippetOptions = {
-    style: pickShareStyle(opts.style),
-    includeMarkets: cfg.markets !== false,
-    includeHashtag: opts.hashtag !== false,
-    includeInstallLine: opts.installLine !== false,
-  };
-  const copy = opts.copy === true;
-
-  // The competition goes on the card: its title names it and its run cue
-  // selects it (`--competition <alias>`), whatever the recipient follows. No
-  // mode line: the card is the artifact, printed and copied as it is.
-  const where = { tz: cfg.tz, locale: cfg.lang, competition: cfg.competition };
-
-  // share live — lean: no market enrichment (and no extra fetch).
-  if (target === 'live') {
-    precheck(cfg, t);
-    const adapter = adapterFor(ctx);
-    const live = await getLiveMatches(adapter, requestClock(adapter, ctx.now));
-    emitMatchCard(ctx, liveShareCard(live, where), { ...baseOptions, includeMarkets: false }, copy);
-    return;
-  }
-
-  // share table [group] — a standings card (facts only; no market lines)
-  if (target === 'table') {
-    precheck(cfg, t);
-    const group = tableKeyOrThrow(team, t);
-    emitTableCard(
-      ctx,
-      tableShareCard(await getStandings(adapterFor(ctx), group), group, undefined, cfg.lang, cfg.competition),
-      baseOptions,
-      copy,
-    );
-    return;
-  }
-
-  // share bracket [stage] — knockout bracket card
-  if (target === 'bracket') {
-    precheck(cfg, t);
-    const stageFilter = team?.toUpperCase();
-    if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
-      throw new InputError(i18n(cfg.lang, 'bracket.invalidStage'));
-    }
-    const bracket = await getBracket(
-      adapterFor(ctx),
-      stageFilter
-        ? { stage: stageFilter as Stage, lang: cfg.lang }
-        : { lang: cfg.lang },
-    );
-    emitBracketCard(
-      ctx,
-      bracketShareCard(bracket, stageFilter, cfg.lang, cfg.competition),
-      {
-        includeHashtag: baseOptions.includeHashtag,
-        includeInstallLine: baseOptions.includeInstallLine,
-        locale: cfg.lang,
-        style: baseOptions.style,
-        tz: cfg.tz,
-      },
-      copy,
-    );
-    return;
-  }
-
-  // share next <team>
-  if (target === 'next') {
-    precheck(cfg, t);
-    // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
-    // R32+ tie pastes here too, not just group games. A saved pin is not
-    // resolved again.
-    // The clock that selected the fixture judges its market: one clock per request.
-    const { code, next, now } = await nextAsked(ctx, team, teamUsage('share next', cfg));
-    const market = await reliableShareSignals(ctx, next.fixture ? [next.fixture] : [], now);
-    emitMatchCard(ctx, nextShareCard(next, code, market, where), baseOptions, copy);
-    return;
-  }
-
-  // share <id>  (anything the day grammar does not read)
-  if (target && !parseDayArg(target)) {
-    precheck(cfg, t);
-    // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
-    // differ from the fixture's UTC date.
-    const adapter = adapterFor(ctx);
-    // The request's clock (the one given, else the adapter's read clock), read
-    // once: the clock that finds the match judges its market.
-    const now = requestClock(adapter, ctx.now);
-    const found = await getMatchById(adapter, target, now);
-    const market = await reliableShareSignals(ctx, found.match ? [found.match] : [], now);
-    emitMatchCard(ctx, matchShareCard(found, target, market, where), baseOptions, copy);
-    return;
-  }
-
-  // share [today | <date>]
-  const explicitDate = target && target !== 'today' ? target : undefined;
-  precheck(cfg, t, explicitDate);
-  const adapter = adapterFor(ctx);
-  // The request's clock (the one given, else the adapter's read clock), read
-  // once: the default date and the market gate.
-  const now = requestClock(adapter, ctx.now);
-  const { date } = askedDay(explicitDate, now, cfg.tz, t);
-  const day = await getMatchesForDate(adapter, date, resolveTz(cfg.tz));
-  const { matches: all, degraded, source } = day;
-  const todays = fixturesByDate(date, all, cfg.tz);
-  const market = await reliableShareSignals(ctx, todays, now);
-  emitMatchCard(
-    ctx,
-    dateShareCard(
-      {
-        date,
-        // A typed day (any form) is explicit: the card's run cue then names its
-        // date, so a recipient on another day replays THIS day, as MCP's does.
-        explicit: explicitDate !== undefined,
-        matches: todays,
-        degraded,
-        source,
-        // The read decides what an empty day says (whether it merged the
-        // bundled schedule) and the card's attribution (what it served).
-        read: day,
-      },
-      market,
-      where,
-    ),
-    baseOptions,
-    copy,
-  );
-}
-
 /**
  * `vibe` — a tiny easter egg. Prints a random matchday-coder one-liner signed
  * with the project's social tag. No network and no i18n (the Spanglish is the
@@ -2682,7 +2363,7 @@ interface FollowFacts {
  *     `CLAUDINHO_TEAM`'s three states, in the tense the NEXT command allows
  *     (`nextSelection`: the environment while set, else the saved choice;
  *     never this command's flag). The team-taking commands (`next`,
- *     `share next`, `markets next`; the others read no team) reach the team
+ *     `markets next`; the others read no team) reach the team
  *     only once the competition is selected; otherwise they stop before it
  *     (`precheck`), and the sentence names what lifts the stop. The gate
  *     (`teamGate`), by the next selection's kind and the file:
@@ -3027,8 +2708,8 @@ function endScoreCommand(ctx: Ctx, now: Date): void {
  *  - the ⭐ star block is a CTA, so it takes the standard gates (TTY, non-JSON,
  *    no CLAUDINHO_NO_STAR) exactly like `maybeStarNudge`.
  *
- * The hashtag stays EN as a fixed tag (same treatment as the share disclaimer),
- * and reuses `SHARE_HASHTAG` so there's one source for it. The statusline/hook
+ * The hashtag stays EN as a fixed tag, and reuses `HASHTAG` so there's one
+ * source for it. The statusline/hook
  * never call this — their sign-off is CTA-free by design.
  */
 function printTournamentSignOff(ctx: Ctx): void {
@@ -3036,7 +2717,7 @@ function printTournamentSignOff(ctx: Ctx): void {
   if (cfg.json) return;
   const c = painterFor(cfg);
   out();
-  out(`${t('signoff.complete')} ${SHARE_HASHTAG}`);
+  out(`${t('signoff.complete')} ${HASHTAG}`);
   if (!process.stdout.isTTY || process.env.CLAUDINHO_NO_STAR) return;
   out();
   out(c.dim(`⭐ ${t('signoff.star')}`));

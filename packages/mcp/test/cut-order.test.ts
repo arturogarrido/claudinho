@@ -8,9 +8,10 @@
  * tool proves the sentence survives the cut. The sentences do not change.
  */
 import { EspnAdapter, FakeMarketProvider, allFixtures, attachFetchMeta, type GroupStandings, type MarketProvider, type Match, type ProviderAdapter, type StandingRow } from '@claudinho/core';
+import { DISCLAIMER } from '../src/format';
 import { describe, expect, it } from 'vitest';
 import { toContent } from '../src/server';
-import { toolGetBracket, toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetShareSnippet, toolGetStandings, toolGetToday } from '../src/tools';
+import { toolGetBracket, toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetStandings, toolGetToday } from '../src/tools';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
 type Side = { id: string; abbr: string; name: string };
@@ -74,7 +75,7 @@ describe('get_today: every qualifying sentence before the rows (D7)', () => {
     const cut = cutText(r);
     expect(cut).toContain('(truncated)');
     expect(cut).toContain('list truncated');
-    expect(cut).toMatch(/not affiliated/i);
+    expect(cut).toContain(DISCLAIMER);
   });
 
   it('the verdict first, the unserved count next, then the rest, in that order', async () => {
@@ -99,6 +100,10 @@ describe('get_match: the degraded line and the market notice before the match (D
     const r = await toolGetMatch({ id: '760415', adapter: feed({ fail: true }) });
     // The CLI's sentence for this state (core's `feed.degraded`, 0.11 · 2.7c).
     precedes(r.text, 'Live scores unavailable — showing the bundled schedule', 'Mexico');
+    // The bundled row is not live: degraded, no attribution in text or data, the disclaimer kept.
+    expect(r.data).toMatchObject({ degraded: true, source: null });
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain(DISCLAIMER);
   });
 
   it('the market-incomplete notice', async () => {
@@ -219,27 +224,21 @@ describe('the orderings a mutation pass found reachable and unpinned (review, ro
   });
 });
 
-describe('the live and date cards: the list’s cap is a note after the verdict, never a title suffix before it (review, rounds 2 and 3)', () => {
-  // Found in review: the two bounded cards printed "(showing 40 of 41 — list truncated)" as the title's suffix,
-  // before the verdict's note, the one place the rule "the verdict first, then what qualifies the body" was not
-  // kept. The cap is a qualifying sentence like the tools' and takes the same place; the title is bare.
+describe('get_live and get_today: the list’s cap is a note after the verdict, never before it (review, rounds 2 and 3)', () => {
+  // Found in review: two bounded answers printed "(showing 40 of 41 — list truncated)" before the verdict's note,
+  // the one place the rule "the verdict first, then what qualifies the body" was not kept. The cap is a qualifying
+  // sentence like any other and takes its place after the verdict, before the rows.
   const inPlay = many('in');
 
-  it('the live card: title, the verdict, the cap, the rows', async () => {
-    const r = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T23:30:00Z'), adapter: feed({ events: [{ id: '760414', date: '2026-06-11T22:00Z', home: MEX, away: RSA, raw: REFUSED }, ...inPlay] }) } as never);
-    const title = r.text.split('\n')[0] ?? '';
-    expect(title).not.toContain('showing');
+  it('get_live: the verdict, the cap, the rows', async () => {
+    const r = await toolGetLive({ now: new Date('2026-06-11T23:30:00Z'), adapter: feed({ events: [{ id: '760414', date: '2026-06-11T22:00Z', home: MEX, away: RSA, raw: REFUSED }, ...inPlay] }) } as never);
     precedes(r.text, 'may be incomplete', 'list truncated');
-    precedes(r.text, 'list truncated', '0–0');
-    const whole = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T23:30:00Z'), adapter: feed({ events: inPlay }) } as never);
-    expect(whole.text.split('\n')[0] ?? '').not.toContain('showing');
-    precedes(whole.text, 'list truncated', '0–0');
+    precedes(r.text, 'list truncated', ' — LIVE ');
   });
 
-  it('the date card: title, the verdict, the cap, the rows', async () => {
-    const r = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [{ ...OPENER, raw: REFUSED }, ...many()] }) });
-    expect(r.text.split('\n')[0] ?? '').not.toContain('showing');
-    precedes(r.text, 'may be incomplete', 'bundled schedule'); // the verdict, then the unserved count (as get_today)
+  it('get_today: the verdict, the unserved count, the cap, the rows', async () => {
+    const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [{ ...OPENER, raw: REFUSED }, ...many()] }) });
+    precedes(r.text, 'may be incomplete', 'bundled schedule'); // the verdict, then the unserved count
     precedes(r.text, 'bundled schedule', 'list truncated'); // then the cap
     precedes(r.text, 'list truncated', 'Mexico');
   });

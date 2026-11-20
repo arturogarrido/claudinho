@@ -30,13 +30,13 @@ This is Claudinho's most recurring bug: the *same* root cause shipped as v0.8.2 
 ### Live hybrid paths
 
 - When knockout fetch fails but standings succeed: set `source` from standings provider.
-- Share/MCP: inner `formatBracketList({ footer: false })`, outer layer adds attribution/notices **once**.
-- CLI/MCP wrappers: option types must match the formatter (`ShareBracketOptions`, not `ShareSnippetOptions`).
+- MCP: inner `formatBracketList({ footer: false })`, outer layer adds attribution/notices **once**.
+- CLI/MCP wrappers: option types must match the formatter.
 - **Surface parity:** see `.cursor/rules/surface-parity.mdc` — every bracket formatter path passes `tz` + `locale`; statusline knockouts indirect-resolve via cached `getKnockoutFixtures` (hot path fail-closed).
 
 ### Pre-merge QA
 
-After `pnpm -r build`, run **`pnpm release:qa`** (`scripts/release-qa.sh`). Eyeball every section; tripwires at the end encode the 0.8.x bracket regressions (calendar month, tz threading, share disclaimer).
+After `pnpm -r build`, run **`pnpm release:qa`** (`scripts/release-qa.sh`). Eyeball every section; tripwires at the end encode the 0.8.x bracket regressions (calendar month, tz threading, disclaimer).
 
 ## From `.cursor/rules/surface-parity.mdc`
 

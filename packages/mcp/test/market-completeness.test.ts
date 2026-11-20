@@ -21,7 +21,6 @@ import {
   cachedMarketSignals,
   toolGetMarketSignal,
   toolGetMatch,
-  toolGetShareSnippet,
   toolGetToday,
 } from '../src/tools';
 
@@ -102,17 +101,6 @@ describe('an incomplete market read does not render as an empty one', () => {
     });
     expect(r.text).toContain('unavailable or incomplete');
     expect(r.data).toMatchObject({ marketComplete: false, marketSignal: null });
-  });
-
-  it('propagates completeness into share data and the pasteable card', async () => {
-    const r = await toolGetShareSnippet({
-      date: date(),
-      adapter,
-      marketProvider: provider(false),
-      now: NOW,
-    });
-    expect(r.text).toContain('Market data unavailable or incomplete');
-    expect(r.data).toMatchObject({ marketComplete: false, marketSignals: {} });
   });
 
   it('does not call an incomplete dedicated match read "no signal"', async () => {

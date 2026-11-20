@@ -33,7 +33,6 @@ const CALLS: Readonly<Record<string, Record<string, unknown>>> = {
   get_bracket: {},
   get_next_fixture: {},
   get_market_signal: { team: 'MEX' },
-  get_share_snippet: { matchId: '760415' },
   get_team: { query: 'Mexico' },
   list_competitions: {},
 };
@@ -82,7 +81,7 @@ describe('server.json lists only environment variables the server reads', () => 
     for (const name of advertised) expect(name).toMatch(/^CLAUDINHO_[A-Z_]+$/);
   });
 
-  // A fresh import of the server and ten calls: about a second alone, past vitest's 5 s default once in the parallel
+  // A fresh import of the server and nine calls: about a second alone, past vitest's 5 s default once in the parallel
   // suite on a loaded machine, so the bound is the slow-runner one.
   it('every listed name is read while the server loads and answers one call to each tool', { timeout: 30_000 }, async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(feed as typeof fetch);

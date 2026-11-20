@@ -12,7 +12,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DISCLAIMER, disclaimerLine, FAN_PROJECT, SHARE_DISCLAIMER, SUPPORTED } from '../src';
+import { DISCLAIMER, disclaimerLine, FAN_PROJECT, SUPPORTED } from '../src';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -101,12 +101,6 @@ describe('the static copies carry the constant', () => {
       ['.claude-plugin/marketplace.json', ((json('.claude-plugin/marketplace.json') as { plugins?: Array<{ description?: unknown }> }).plugins ?? [])[0]?.description],
     ];
     for (const [label, text] of listings) expect(collapsed(String(text)), label).not.toMatch(OTHER_SPELLING);
-  });
-});
-
-describe('the composed footer, spelled out', () => {
-  it("the share card's footer is the fan line, a middle dot, then the sentence", () => {
-    expect(SHARE_DISCLAIMER).toBe('Independent fan project · Not affiliated with FIFA, any confederation, league or club, or Anthropic.');
   });
 });
 

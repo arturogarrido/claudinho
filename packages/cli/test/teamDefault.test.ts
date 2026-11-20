@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { allFixtures, type Match, type ProviderAdapter } from '@claudinho/core';
-import { cmdNext, cmdShare, InputError } from '../src/commands';
+import { cmdNext, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -34,7 +34,7 @@ beforeEach(() => {
 afterEach(() => outSpy.mockReset());
 const json = () => JSON.parse(writes.join(''));
 
-describe('CLAUDINHO_TEAM fallback (next / share next)', () => {
+describe('CLAUDINHO_TEAM fallback (next)', () => {
   const TEAM = allFixtures()[0]!.home.code;
   let prev: string | undefined;
   beforeEach(() => {
@@ -55,22 +55,16 @@ describe('CLAUDINHO_TEAM fallback (next / share next)', () => {
     delete process.env.CLAUDINHO_TEAM;
     await expect(cmdNext(undefined, ctx())).rejects.toBeInstanceOf(InputError);
   });
-
-  it('cmdShare next falls back to the env team', async () => {
-    process.env.CLAUDINHO_TEAM = TEAM;
-    await cmdShare('next', undefined, {}, ctx());
-    expect((json() as { team: string }).team).toBe(TEAM.toUpperCase());
-  });
 });
 
-describe('team-arg name resolution (next / share next accept names, not just codes)', () => {
+describe('team-arg name resolution (next accepts names, not just codes)', () => {
   it('resolves a nation name to its code', async () => {
     await cmdNext('mexico', ctx());
     expect((json() as { team: string }).team).toBe('MEX');
   });
 
-  it('resolves an alias (Holland → NED) via share next too', async () => {
-    await cmdShare('next', 'holland', {}, ctx());
+  it('resolves an alias (Holland → NED)', async () => {
+    await cmdNext('holland', ctx());
     expect((json() as { team: string }).team).toBe('NED');
   });
 
