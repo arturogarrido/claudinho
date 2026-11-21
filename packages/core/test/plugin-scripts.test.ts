@@ -210,7 +210,8 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
    * it refuses the control in the module and passes the one in the test file; `other` refuses the module's control
    * for a reason that is no type error; `elsewhere` refuses it with a different type error (the one a module that
    * lost its exports would give); `kit-elsewhere` is honest for the module and refuses the test file's control with
-   * a different type error; `broken` refuses every folder; `kit-broken` refuses every folder that holds the kit.
+   * a different type error; `broken` refuses every folder; `kit-broken` is honest for the module and refuses every
+   * folder that holds the kit.
    */
   const stage = (kind: 'honest' | 'blind' | 'modules-only' | 'other' | 'elsewhere' | 'kit-elsewhere' | 'broken' | 'kit-broken') => {
     const base = mkdtempSync(join(tmpdir(), 'plugin-control-'));
@@ -227,7 +228,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
       honest: `if has_control || has_kit_control; then ${planted}; fi; exit 0`,
       'modules-only': `if has_control; then ${planted}; fi; exit 0`,
       'kit-elsewhere': `if has_control; then ${planted}; fi; if has_kit_control; then echo "  line 2, column 1: error TS2304: Cannot find name 'describe'."; exit 1; fi; exit 0`,
-      'kit-broken': 'if [ -f "$3/hooks/band.test.tsx" ]; then echo "  line 1, column 1: error TS2322: something else."; exit 1; fi; exit 0',
+      'kit-broken': `if has_control; then ${planted}; fi; if [ -f "$3/hooks/band.test.tsx" ]; then echo "  line 1, column 1: error TS2322: something else."; exit 1; fi; exit 0`,
       elsewhere: 'if has_control; then echo "  line 19, column 10: error TS2305: Module \'"./celebration"\' has no exported member \'goalRow\'."; exit 1; fi; exit 0',
       blind: 'exit 0',
       // The real validator's report for a refusal that is no type error: the warning, then its closing line.
