@@ -22,6 +22,9 @@
 set -euo pipefail
 # A shell that exports CDPATH makes `cd` look there first and print where it went: every `cd` below means the name given.
 unset CDPATH
+# scripts/plugin-demo.sh skips its validation when this variable is set: a shell that exports it must not skip the
+# demo's type-check here.
+unset PLUGIN_DEMO_NO_VALIDATE
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 kit="$root/packages/plugin-demo-tests"
