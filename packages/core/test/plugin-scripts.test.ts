@@ -50,7 +50,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     // exits $STUB_EXIT; any other call is a usage error (64), as an added flag would make the real command do something else.
     writeFileSync(
       join(bin, 'claude'),
-      `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; echo "$3 tests=$(find "$3" -name '*.test.tsx' | wc -l | tr -d ' ')" >> "${log}.validate"; [ "\${STUB_VALIDATE_EXIT:-0}" = 0 ] || echo "  line 3, column 1: error TS2322: the fake validator's report."; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; echo "$(cat "${log}.validate" 2>/dev/null | wc -l | tr -d ' ')" >> "${log}.before"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`,
+      `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; echo "$3 tests=$(find "$3" -name '*.test.tsx' | wc -l | tr -d ' ')" >> "${log}.validate"; (cd "$3" && find . ! -type d | sort) >> "${log}.validate.files"; [ "\${STUB_VALIDATE_EXIT:-0}" = 0 ] || echo "  line 3, column 1: error TS2322: the fake validator's report."; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; echo "$(cat "${log}.validate" 2>/dev/null | wc -l | tr -d ' ')" >> "${log}.before"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`,
     );
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
@@ -60,7 +60,9 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     const validated = () => lines(`${log}.validate`);
     /** For each kit run, how many validations came before it. */
     const before = () => lines(`${log}.before`);
-    return { root, run, seen, validated, before, kit: join(root, 'packages/plugin-tests'), plugin: join(root, 'packages/plugin') };
+    /** Every file of the folder the validator was handed, as it was then. */
+    const validatedFiles = () => lines(`${log}.validate.files`);
+    return { root, run, seen, validated, validatedFiles, before, kit: join(root, 'packages/plugin-tests'), plugin: join(root, 'packages/plugin') };
   };
 
   it('hands the kit the plugin with the kit\'s files in it, exits as the kit does, and removes its folder', () => {
@@ -94,6 +96,20 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(s.validated()).toEqual([`${dir} tests=${tests}`]);
     expect(dir.startsWith('/')).toBe(true);
     expect(s.before()).toEqual(['1']);
+    // The folder validated held, then, every file the kit ran with: the plugin's and the kit's, not the kit alone.
+    expect(s.validatedFiles()).toEqual(s.seen().slice(1));
+    expect(s.validatedFiles()).toContain('./.claude-plugin/plugin.json');
+    expect(s.validatedFiles()).toContain('./hooks/register.tsx');
+  });
+
+  it('a kit whose only test file ends in .test.ts is a kit: counted, validated and run', () => {
+    const s = stage();
+    for (const f of tracked('packages/plugin-tests').filter((x) => /\.test\.tsx?$/.test(x))) rmSync(join(s.kit, f));
+    writeFileSync(join(s.kit, 'hooks/score.test.ts'), 'export const x = 1\n');
+    const r = s.run();
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain('plugin-test: 1 test files');
+    expect(s.seen()).toContain('./hooks/score.test.ts');
   });
 
   it('a kit the validator refuses runs no test: the report is shown, the status is 1, the folder is removed', () => {
@@ -207,7 +223,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
    * line AFTER the module's own text, and in a test file when the kit's `hooks/band.test.tsx` holds it after the
    * file's own text. `honest` refuses a folder that holds the control in either, with that line's type error in its
    * report, and passes any other; `blind` passes everything; `modules-only` is a validator that reads no test file:
-   * it refuses the control in the module and passes the one in the test file; `other` refuses the module's control
+   * it refuses the control's line in any file that is not a test file and passes it in a test file; `other` refuses the module's control
    * for a reason that is no type error; `elsewhere` refuses it with a different type error (the one a module that
    * lost its exports would give); `kit-elsewhere` is honest for the module and refuses the test file's control with
    * a different type error; `broken` refuses every folder; `kit-broken` is honest for the module and refuses every
@@ -226,7 +242,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     const planted = 'echo "  line 164, column 14: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1';
     const verdict = {
       honest: `if has_control || has_kit_control; then ${planted}; fi; exit 0`,
-      'modules-only': `if has_control; then ${planted}; fi; exit 0`,
+      'modules-only': `if has_control || holds_outside_tests; then ${planted}; fi; exit 0`,
       'kit-elsewhere': `if has_control; then ${planted}; fi; if has_kit_control; then echo "  line 2, column 1: error TS2304: Cannot find name 'describe'."; exit 1; fi; exit 0`,
       'kit-broken': `if has_control; then ${planted}; fi; if [ -f "$3/hooks/band.test.tsx" ]; then echo "  line 1, column 1: error TS2322: something else."; exit 1; fi; exit 0`,
       elsewhere: 'if has_control; then echo "  line 19, column 10: error TS2305: Module \'"./celebration"\' has no exported member \'goalRow\'."; exit 1; fi; exit 0',
@@ -237,12 +253,14 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     }[kind];
     writeFileSync(
       join(bin, 'claude'),
-      `#!/usr/bin/env bash\n[ "$#" -eq 4 ] && [ "$1 $2" = "plugin validate" ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64\necho "$3" >> "${log}"\nhas_control() { grep -q 'strictControl' "$3/hooks/celebration.tsx" && grep -q 'export const celebrationRow' "$3/hooks/celebration.tsx"; }\nhas_kit_control() { [ -f "$3/hooks/band.test.tsx" ] && grep -q 'strictControl' "$3/hooks/band.test.tsx" && grep -q "from 'claude-code/testing'" "$3/hooks/band.test.tsx"; }\n${verdict.replace(/has_(kit_)?control/g, (m) => `${m} "$@"`)}\n`,
+      `#!/usr/bin/env bash\n[ "$#" -eq 4 ] && [ "$1 $2" = "plugin validate" ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64\necho "$3" >> "${log}"\nhas_control() { grep -q 'strictControl' "$3/hooks/celebration.tsx" && grep -q 'export const celebrationRow' "$3/hooks/celebration.tsx"; }\nholds_outside_tests() { grep -rl 'strictControl' "$3" | grep -qv '\\.test\\.tsx$'; }\necho "$(cd "$3" && grep -rl 'strictControl' . | sort | tr '\\n' ' ')" >> "${log}.where"\nhas_kit_control() { [ -f "$3/hooks/band.test.tsx" ] && grep -q 'strictControl' "$3/hooks/band.test.tsx" && grep -q "from 'claude-code/testing'" "$3/hooks/band.test.tsx"; }\n${verdict.replace(/has_(kit_)?control|holds_outside_tests/g, (m) => `${m} "$@"`)}\n`,
     );
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-strict-control.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path } });
     const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
-    return { root, run, seen };
+    /** For each validation, the files of its folder that held the control's line. */
+    const where = () => (existsSync(`${log}.where`) ? readFileSync(`${log}.where`, 'utf8').split('\n').map((l) => l.trim()) : []).slice(0, -1);
+    return { root, run, seen, where };
   };
   const hashes = (root: string) =>
     ['packages/plugin', 'packages/plugin-tests'].flatMap((dir) => tracked(dir).map((f) => `${dir}/${f} ${createHash('sha256').update(readFileSync(join(root, dir, f))).digest('hex')}`));
@@ -275,6 +293,9 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     expect(s.seen()).toHaveLength(4);
     expect(new Set(s.seen()).size).toBe(4);
     expect(r.stdout).toMatch(/test file/);
+    // The line is planted in one file of each copy with the error and in no other: a control that also wrote it into
+    // a module of the copy with the kit would prove nothing about the validator reading test files.
+    expect(s.where()).toEqual(['', './hooks/celebration.tsx', '', './hooks/band.test.tsx']);
     for (const dir of s.seen()) {
       expect(dir.startsWith(s.root)).toBe(false);
       expect(existsSync(dir)).toBe(false);
@@ -347,6 +368,46 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     expect(broken.status).toBe(1);
     expect(broken.stderr).toMatch(/as it is/);
     leftNothing(b, untouched);
+  });
+
+  it('refuses a plugin or a kit that holds a link anywhere, before anything is copied or validated: an append through a copied link would write into the checkout', () => {
+    for (const make of [
+      // The module the error is planted in, linked to a file of the checkout.
+      (root: string) => {
+        writeFileSync(join(root, 'elsewhere.tsx'), 'export const celebrationRow = 1\n');
+        rmSync(join(root, 'packages/plugin/hooks/celebration.tsx'));
+        symlinkSync(join(root, 'elsewhere.tsx'), join(root, 'packages/plugin/hooks/celebration.tsx'));
+      },
+      // The plugin holds a link where the kit holds its test file: the kit's copy would be written through it.
+      (root: string) => {
+        writeFileSync(join(root, 'elsewhere.tsx'), 'x\n');
+        symlinkSync(join(root, 'elsewhere.tsx'), join(root, 'packages/plugin/hooks/band.test.tsx'));
+      },
+      // The plugin's hooks folder, linked.
+      (root: string) => {
+        cpSync(join(root, 'packages/plugin/hooks'), join(root, 'hooks-real'), { recursive: true });
+        rmSync(join(root, 'packages/plugin/hooks'), { recursive: true });
+        symlinkSync(join(root, 'hooks-real'), join(root, 'packages/plugin/hooks'));
+      },
+      // The kit's test file, linked.
+      (root: string) => {
+        cpSync(join(root, 'packages/plugin-tests/hooks/band.test.tsx'), join(root, 'elsewhere.tsx'));
+        rmSync(join(root, 'packages/plugin-tests/hooks/band.test.tsx'));
+        symlinkSync(join(root, 'elsewhere.tsx'), join(root, 'packages/plugin-tests/hooks/band.test.tsx'));
+      },
+      // A link elsewhere in the kit.
+      (root: string) => symlinkSync('/nowhere/at/all', join(root, 'packages/plugin-tests/hooks/notes.txt')),
+    ]) {
+      const s = stage('honest');
+      make(s.root);
+      const elsewhere = join(s.root, 'elsewhere.tsx');
+      const was = existsSync(elsewhere) ? readFileSync(elsewhere, 'utf8') : null;
+      const r = s.run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/link/);
+      expect(s.seen()).toEqual([]);
+      if (was !== null) expect(readFileSync(elsewhere, 'utf8')).toBe(was);
+    }
   });
 
   it('refuses a PATH with no claude, and its error is one only strict null checks catch', () => {

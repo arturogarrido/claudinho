@@ -376,7 +376,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     // is a usage error (64).
     writeFileSync(
       join(bin, 'claude'),
-      `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; kit=no; [ ! -e "$3/hooks/demo.test.tsx" ] || kit=yes; echo "$* kit=$kit" >> "${log}.validate"; if [ "$kit" = yes ] && [ "\${STUB_KIT_VALIDATE_EXIT:-0}" != 0 ]; then echo "  line 3, column 1: error TS2322: the fake validator's report."; exit "$STUB_KIT_VALIDATE_EXIT"; fi; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; echo "$(cat "${log}.validate" 2>/dev/null | wc -l | tr -d ' ')" >> "${log}.before"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`,
+      `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; kit=no; [ ! -e "$3/hooks/demo.test.tsx" ] || kit=yes; echo "$* kit=$kit" >> "${log}.validate"; [ "$kit" = no ] || (cd "$3" && find . ! -type d | sort) >> "${log}.validate.files"; if [ "$kit" = yes ] && [ "\${STUB_KIT_VALIDATE_EXIT:-0}" != 0 ]; then echo "  line 3, column 1: error TS2322: the fake validator's report."; exit "$STUB_KIT_VALIDATE_EXIT"; fi; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; echo "$(cat "${log}.validate" 2>/dev/null | wc -l | tr -d ' ')" >> "${log}.before"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`,
     );
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-demo-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
@@ -401,6 +401,8 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     expect(s.validated()).toEqual([`plugin validate ${dir} --strict kit=no`, `plugin validate ${dir} --strict kit=yes`]);
     expect(dir.startsWith('/')).toBe(true);
     expect(s.before()).toEqual(['2']);
+    // The folder validated with the kit held, then, every file the kit ran with: the demo's and the kit's.
+    expect(readFileSync(join(s.root, '..', 'claude.log.validate.files'), 'utf8').split('\n').filter(Boolean)).toEqual(lines.slice(1));
     // A failing kit: its status is the script's (1 is the real command's for a failed test), and the folder is
     // removed all the same.
     expect(s.run({ STUB_EXIT: '1' }).status).toBe(1);
@@ -455,6 +457,16 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
       expect(dir.startsWith('/')).toBe(true);
       expect(existsSync(dir)).toBe(false);
     }
+  });
+
+  it('a kit whose only test file ends in .test.ts is a kit: counted, validated and run', () => {
+    const s = stage();
+    rmSync(join(s.kit, 'hooks/demo.test.tsx'));
+    writeFileSync(join(s.kit, 'hooks/score.test.ts'), 'export const x = 1\n');
+    const r = s.run();
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain('plugin-demo-test: 1 test files');
+    expect(s.seen()).toContain('./hooks/score.test.ts');
   });
 
   it('counts a test file once whatever its name holds: a newline in a name is one file, not two', () => {

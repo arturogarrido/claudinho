@@ -5,7 +5,9 @@
  * file: a name misspelled in the contract is not an error there, it turns the value it types into `any`, and the
  * modules that read it then check against nothing. So the contract is compiled here, with the TypeScript the
  * workspace builds with, against a stub for the engine's module that declares only what the contract adds to (an
- * empty `PluginState`). What this does not prove: anything the engine's own declarations would say (they are not in
+ * empty `PluginState`), together with a reader of both: a module that imports the state from the engine's module and a
+ * type from the contract, as the plugin's modules do. The reader is what makes the compiler load the stub and hold
+ * the contract to what a module can import from it; the contract alone compiles without either. What this does not prove: anything the engine's own declarations would say (they are not in
  * the repository); the engine's color builder's declaration file and its `.js` module, which are the engine's files,
  * copied unchanged.
  */
@@ -24,16 +26,21 @@ describe("the plugin's type contract, compiled", () => {
   afterAll(() => {
     for (const b of bases) rmSync(b, { recursive: true, force: true });
   });
-  /** The diagnostics of `contract` as the file `types/index.d.ts`, beside a stub `claude-code` module. */
-  const diagnostics = (contract: string): string[] => {
+  const STUB = 'export interface PluginState {}\n';
+  /** A module as the plugin's are: the state from the engine's module, a type from the contract, one read of the state. */
+  const READER = "import type { PluginState } from 'claude-code'\nimport type { ClaudinhoBand } from './types'\nexport const band = (state: PluginState): ClaudinhoBand => state.claudinho.band\n";
+  /** The diagnostics of `contract` as the file `types/index.d.ts`, beside a stub `claude-code` module and the reader. */
+  const diagnostics = (contract: string, stub = STUB): string[] => {
     const base = mkdtempSync(join(tmpdir(), 'plugin-contract-'));
     bases.push(base);
     const file = join(base, 'types/index.d.ts');
     const engine = join(base, 'node_modules/claude-code/index.d.ts');
+    const reader = join(base, 'reader.ts');
     for (const f of [file, engine]) mkdirSync(dirname(f), { recursive: true });
     writeFileSync(file, contract);
-    writeFileSync(engine, 'export interface PluginState {}\n');
-    const program = ts.createProgram([file], {
+    writeFileSync(engine, stub);
+    writeFileSync(reader, READER);
+    const program = ts.createProgram([file, reader], {
       noEmit: true,
       strict: true,
       skipLibCheck: false,
@@ -58,6 +65,19 @@ describe("the plugin's type contract, compiled", () => {
     expect(found[0]).toContain("Cannot find name 'ClaudinhoBnad'.");
     // A syntax error is one too.
     expect(diagnostics(`${CONTRACT}\nexport type = 1\n`).length).toBeGreaterThan(0);
+  });
+
+  it('is held to what a module reads of it: the stub is loaded, and a type the contract stops exporting is an error', () => {
+    // The stub is part of the compilation: an error planted in it is reported.
+    expect(diagnostics(CONTRACT, 'export interface PluginState { x: NotDeclared }\n').join('\n')).toContain("Cannot find name 'NotDeclared'.");
+    // The contract's types turned local: no module could import them.
+    const local = CONTRACT.replace(/^export type /gm, 'type ');
+    expect(local).not.toBe(CONTRACT);
+    expect(diagnostics(local).length).toBeGreaterThan(0);
+    // The state without its `band`: the reader's one read fails.
+    const less = CONTRACT.replace(/^\s*band: ClaudinhoBand\r?\n/m, '');
+    expect(less).not.toBe(CONTRACT);
+    expect(diagnostics(less).join('\n')).toContain("'band'");
   });
 
   it('adds to the engine\'s module and imports nothing: the stub declares all the contract needs of it', () => {
