@@ -170,7 +170,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     const log = join(base, 'claude.log');
     const verdict = {
       honest: 'if has_control; then echo "  line 164, column 14: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1; fi; exit 0',
-      elsewhere: 'if has_control; then echo "  line 19, column 10: error TS2305: Module \'\"./celebration\"\' has no exported member \'goalRow\'."; exit 1; fi; exit 0',
+      elsewhere: 'if has_control; then echo "  line 19, column 10: error TS2305: Module \'"./celebration"\' has no exported member \'goalRow\'."; exit 1; fi; exit 0',
       blind: 'exit 0',
       // The real validator's report for a refusal that is no type error: the warning, then its closing line.
       other: 'if has_control; then echo "  author: No author information provided."; echo "Validation failed (--strict treats warnings as errors)"; exit 1; fi; exit 0',
