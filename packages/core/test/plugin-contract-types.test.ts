@@ -4,7 +4,7 @@
  * `claude plugin validate --strict` is the plugin's type-check, and it reports no type error INSIDE a declaration
  * file: a name misspelled in the contract is not an error there, it turns the value it types into `any`, and the
  * modules that read it then check against nothing. So the contract is compiled here, with the TypeScript the
- * workspace builds with, against a stand-in for the engine's module that declares only what the contract adds to (an
+ * workspace builds with, against a stub for the engine's module that declares only what the contract adds to (an
  * empty `PluginState`). What this does not prove: anything the engine's own declarations would say (they are not in
  * the repository); the engine's color builder's declaration file and its `.js` module, which are the engine's files,
  * copied unchanged.
@@ -24,7 +24,7 @@ describe("the plugin's type contract, compiled", () => {
   afterAll(() => {
     for (const b of bases) rmSync(b, { recursive: true, force: true });
   });
-  /** The diagnostics of `contract` as the file `types/index.d.ts`, beside a stand-in `claude-code` module. */
+  /** The diagnostics of `contract` as the file `types/index.d.ts`, beside a stub `claude-code` module. */
   const diagnostics = (contract: string): string[] => {
     const base = mkdtempSync(join(tmpdir(), 'plugin-contract-'));
     bases.push(base);
@@ -60,7 +60,7 @@ describe("the plugin's type contract, compiled", () => {
     expect(diagnostics(`${CONTRACT}\nexport type = 1\n`).length).toBeGreaterThan(0);
   });
 
-  it('adds to the engine\'s module and imports nothing: the stand-in declares all the contract needs of it', () => {
+  it('adds to the engine\'s module and imports nothing: the stub declares all the contract needs of it', () => {
     expect(CONTRACT).toMatch(/^declare module 'claude-code' \{\r?\n {2}interface PluginState \{/m);
     expect(CONTRACT).not.toMatch(/^\s*import\s/m);
   });
