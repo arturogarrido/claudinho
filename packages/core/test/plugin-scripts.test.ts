@@ -44,13 +44,23 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     const bin = join(base, 'bin');
     mkdirSync(bin);
     const log = join(base, 'claude.log');
-    // `claude plugin test <dir>`, those three words and no more, logs the folder and its files, then exits $STUB_EXIT;
-    // any other call is a usage error (64), as an added flag would make the real command do something else.
-    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`);
+    // `claude plugin validate <dir> --strict`, those four words and a folder that exists, logs the folder and how many
+    // test files it holds, prints a report line when told to refuse, and exits $STUB_VALIDATE_EXIT; `claude plugin test
+    // <dir>`, those three words and no more, logs the folder, its files and how many validations came before it, then
+    // exits $STUB_EXIT; any other call is a usage error (64), as an added flag would make the real command do something else.
+    writeFileSync(
+      join(bin, 'claude'),
+      `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; echo "$3 tests=$(find "$3" -name '*.test.tsx' | wc -l | tr -d ' ')" >> "${log}.validate"; [ "\${STUB_VALIDATE_EXIT:-0}" = 0 ] || echo "  line 3, column 1: error TS2322: the fake validator's report."; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; echo "$(cat "${log}.validate" 2>/dev/null | wc -l | tr -d ' ')" >> "${log}.before"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`,
+    );
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
-    const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
-    return { root, run, seen, kit: join(root, 'packages/plugin-tests'), plugin: join(root, 'packages/plugin') };
+    const lines = (file: string) => (existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean) : []);
+    const seen = () => lines(log);
+    /** Each validation: the folder it was handed and the test files that folder held. */
+    const validated = () => lines(`${log}.validate`);
+    /** For each kit run, how many validations came before it. */
+    const before = () => lines(`${log}.before`);
+    return { root, run, seen, validated, before, kit: join(root, 'packages/plugin-tests'), plugin: join(root, 'packages/plugin') };
   };
 
   it('hands the kit the plugin with the kit\'s files in it, exits as the kit does, and removes its folder', () => {
@@ -72,6 +82,44 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(second).not.toBe('');
     expect(second).not.toBe(dir);
     expect(existsSync(second)).toBe(false);
+  });
+
+  it('validates the plugin WITH its kit strictly before the kit runs: the kit\'s type-check, in the folder the kit then runs in', () => {
+    const s = stage();
+    const ok = s.run();
+    expect(ok.status, ok.stderr).toBe(0);
+    const tests = tracked('packages/plugin-tests').filter((x) => /\.test\.tsx$/.test(x)).length;
+    const dir = (s.seen()[0] ?? '').replace(/^DIR /, '');
+    // One validation, of the very folder the kit ran in, with every test file already in it, and before the run.
+    expect(s.validated()).toEqual([`${dir} tests=${tests}`]);
+    expect(dir.startsWith('/')).toBe(true);
+    expect(s.before()).toEqual(['1']);
+  });
+
+  it('a kit the validator refuses runs no test: the report is shown, the status is 1, the folder is removed', () => {
+    for (const exit of ['1', '7']) {
+      const s = stage();
+      const r = s.run({ STUB_VALIDATE_EXIT: exit });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("error TS2322: the fake validator's report.");
+      expect(r.stderr).toContain('does not validate');
+      expect(s.seen()).toEqual([]);
+      expect(s.validated()).toHaveLength(1);
+      const dir = (s.validated()[0] ?? '').replace(/ tests=\d+$/, '');
+      expect(dir).not.toBe('');
+      expect(existsSync(dir)).toBe(false);
+    }
+  });
+
+  it('counts a test file once whatever its name holds: a newline in a name is one file, not two', () => {
+    const s = stage();
+    const tests = tracked('packages/plugin-tests').filter((x) => /\.test\.tsx?$/.test(x)).length;
+    expect(s.run().stderr).toContain(`plugin-test: ${tests} test files`);
+    // Made here, in the staged copy, never committed: a name with a newline whose second line is a test file's name too.
+    writeFileSync(join(s.kit, 'hooks/one\nmore.test.tsx'), 'export const x = 1\n');
+    const r = s.run();
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain(`plugin-test: ${tests + 1} test files`);
   });
 
   it('refuses a kit entry that would replace a file of the plugin, a link or a folder as much as a file, before any test runs', () => {
@@ -139,6 +187,8 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(sh).toMatch(/^set -euo pipefail\r?$/m);
     expect(sh).toMatch(/^unset CDPATH\r?$/m);
     expect(sh).toMatch(/^\s*claude plugin test\b/m);
+    // The kit's run is the last command, so the script's status is the kit's; the validation comes before it.
+    expect(sh.trimEnd().split('\n').at(-1)).toMatch(/^claude plugin test "\$dir"\r?$/);
   });
 });
 
@@ -152,24 +202,32 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     for (const b of bases) rmSync(b, { recursive: true, force: true });
   });
   /**
-   * A root with the script and the plugin, and a fake `claude` whose `plugin validate <folder> --strict` behaves as
-   * `kind` says: `honest` refuses a folder whose celebration module holds the control's line AFTER the module's own
-   * text, with that line's type error in its report, and passes any other; `blind` passes everything; `other`
-   * refuses the control's folder for a reason that is no type error; `elsewhere` refuses it with a different type
-   * error (the one a module that lost its exports would give); `broken` refuses every folder.
+   * A root with the script, the plugin and its kit, and a fake `claude` whose `plugin validate <folder> --strict`
+   * behaves as `kind` says. A folder "holds the control" in a module when its celebration module holds the control's
+   * line AFTER the module's own text, and in a test file when the kit's `hooks/band.test.tsx` holds it after the
+   * file's own text. `honest` refuses a folder that holds the control in either, with that line's type error in its
+   * report, and passes any other; `blind` passes everything; `modules-only` is a validator that reads no test file:
+   * it refuses the control in the module and passes the one in the test file; `other` refuses the module's control
+   * for a reason that is no type error; `elsewhere` refuses it with a different type error (the one a module that
+   * lost its exports would give); `kit-elsewhere` is honest for the module and refuses the test file's control with
+   * a different type error; `broken` refuses every folder; `kit-broken` refuses every folder that holds the kit.
    */
-  const stage = (kind: 'honest' | 'blind' | 'other' | 'elsewhere' | 'broken') => {
+  const stage = (kind: 'honest' | 'blind' | 'modules-only' | 'other' | 'elsewhere' | 'kit-elsewhere' | 'broken' | 'kit-broken') => {
     const base = mkdtempSync(join(tmpdir(), 'plugin-control-'));
     bases.push(base);
     const root = join(base, 'root');
     mkdirSync(join(root, 'scripts'), { recursive: true });
     cpSync(join(ROOT, 'scripts/plugin-strict-control.sh'), join(root, 'scripts/plugin-strict-control.sh'));
-    for (const f of tracked('packages/plugin')) cpSync(join(ROOT, 'packages/plugin', f), join(root, 'packages/plugin', f), { recursive: true });
+    for (const dir of ['packages/plugin', 'packages/plugin-tests']) for (const f of tracked(dir)) cpSync(join(ROOT, dir, f), join(root, dir, f), { recursive: true });
     const bin = join(base, 'bin');
     mkdirSync(bin);
     const log = join(base, 'claude.log');
+    const planted = 'echo "  line 164, column 14: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1';
     const verdict = {
-      honest: 'if has_control; then echo "  line 164, column 14: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1; fi; exit 0',
+      honest: `if has_control || has_kit_control; then ${planted}; fi; exit 0`,
+      'modules-only': `if has_control; then ${planted}; fi; exit 0`,
+      'kit-elsewhere': `if has_control; then ${planted}; fi; if has_kit_control; then echo "  line 2, column 1: error TS2304: Cannot find name 'describe'."; exit 1; fi; exit 0`,
+      'kit-broken': 'if [ -f "$3/hooks/band.test.tsx" ]; then echo "  line 1, column 1: error TS2322: something else."; exit 1; fi; exit 0',
       elsewhere: 'if has_control; then echo "  line 19, column 10: error TS2305: Module \'"./celebration"\' has no exported member \'goalRow\'."; exit 1; fi; exit 0',
       blind: 'exit 0',
       // The real validator's report for a refusal that is no type error: the warning, then its closing line.
@@ -178,14 +236,15 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     }[kind];
     writeFileSync(
       join(bin, 'claude'),
-      `#!/usr/bin/env bash\n[ "$#" -eq 4 ] && [ "$1 $2" = "plugin validate" ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64\necho "$3" >> "${log}"\nhas_control() { grep -q 'strictControl' "$3/hooks/celebration.tsx" && grep -q 'export const celebrationRow' "$3/hooks/celebration.tsx"; }\n${verdict.replace(/has_control/g, 'has_control "$@"')}\n`,
+      `#!/usr/bin/env bash\n[ "$#" -eq 4 ] && [ "$1 $2" = "plugin validate" ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64\necho "$3" >> "${log}"\nhas_control() { grep -q 'strictControl' "$3/hooks/celebration.tsx" && grep -q 'export const celebrationRow' "$3/hooks/celebration.tsx"; }\nhas_kit_control() { [ -f "$3/hooks/band.test.tsx" ] && grep -q 'strictControl' "$3/hooks/band.test.tsx" && grep -q "from 'claude-code/testing'" "$3/hooks/band.test.tsx"; }\n${verdict.replace(/has_(kit_)?control/g, (m) => `${m} "$@"`)}\n`,
     );
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-strict-control.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path } });
     const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
     return { root, run, seen };
   };
-  const hashes = (root: string) => tracked('packages/plugin').map((f) => `${f} ${createHash('sha256').update(readFileSync(join(root, 'packages/plugin', f))).digest('hex')}`);
+  const hashes = (root: string) =>
+    ['packages/plugin', 'packages/plugin-tests'].flatMap((dir) => tracked(dir).map((f) => `${dir}/${f} ${createHash('sha256').update(readFileSync(join(root, dir, f))).digest('hex')}`));
   /** Every folder the fake validator was handed is gone, and the plugin's own files are as they were. */
   const leftNothing = (s: { root: string; seen: () => string[] }, before: string[]) => {
     for (const dir of s.seen()) expect(existsSync(dir), dir).toBe(false);
@@ -210,14 +269,54 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     const before = hashes(s.root);
     const r = s.run();
     expect(r.status, r.stderr).toBe(0);
-    // Two validations, each of a folder outside the checkout, both removed; the plugin's own files untouched.
-    expect(s.seen()).toHaveLength(2);
+    // Four validations (the plugin as it is and with the error, then the plugin with its kit as it is and with the
+    // error in a test file), each of a folder outside the checkout, all removed; the checkout's files untouched.
+    expect(s.seen()).toHaveLength(4);
+    expect(new Set(s.seen()).size).toBe(4);
+    expect(r.stdout).toMatch(/test file/);
     for (const dir of s.seen()) {
       expect(dir.startsWith(s.root)).toBe(false);
       expect(existsSync(dir)).toBe(false);
     }
     expect(hashes(s.root)).toEqual(before);
     expect(readFileSync(join(s.root, 'packages/plugin/hooks/celebration.tsx'), 'utf8')).not.toContain('strictControl');
+    expect(readFileSync(join(s.root, 'packages/plugin-tests/hooks/band.test.tsx'), 'utf8')).not.toContain('strictControl');
+  });
+
+  it('fails when the validator reads no test file: it refuses the error in a module and passes the same error in a test file of the kit', () => {
+    const s = stage('modules-only');
+    const before = hashes(s.root);
+    const r = s.run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/did not refuse/);
+    expect(r.stderr).toMatch(/test file/);
+    expect(s.seen()).toHaveLength(4);
+    leftNothing(s, before);
+    // A refusal of the test file's error for another reason proves nothing either.
+    const e = stage('kit-elsewhere');
+    const elsewhere = e.run();
+    expect(elsewhere.status).toBe(1);
+    expect(elsewhere.stderr).toMatch(/TS2322/);
+    expect(elsewhere.stderr).toMatch(/test file/);
+    // The plugin with its kit, as it is, refused: a refusal of the copy with the error would prove nothing.
+    const k = stage('kit-broken');
+    const untouched = hashes(k.root);
+    const broken = k.run();
+    expect(broken.status).toBe(1);
+    expect(broken.stderr).toMatch(/as it is/);
+    expect(k.seen()).toHaveLength(3);
+    leftNothing(k, untouched);
+  });
+
+  it('the kit\'s copy keeps the test file whole: a control that REPLACED the test file with its line is not refused by the honest fake, and fails', () => {
+    const s = stage('honest');
+    const sh = join(s.root, 'scripts/plugin-strict-control.sh');
+    const text = readFileSync(sh, 'utf8');
+    writeFileSync(sh, text.replace(/>>(\s*"[^"\n]*band\.test\.tsx")/, '>$1'));
+    expect(readFileSync(sh, 'utf8')).not.toBe(text);
+    const r = s.run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/did not refuse/);
   });
 
   it('fails when the validator passes the type error: strict validation would then prove nothing', () => {
