@@ -135,3 +135,85 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(sh).toMatch(/^\s*claude plugin test\b/m);
   });
 });
+
+// The control for CI's strict validation. `claude plugin validate --strict` is the plugin's type-check only while the
+// validator reports a type error and strict mode fails on it: a validator that stopped type-checking would leave the
+// strict lines green and saying nothing. `scripts/plugin-strict-control.sh` writes a type error into a COPY of the
+// plugin and requires the validator to refuse it for that reason; here it runs against fake validators.
+describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh, run', () => {
+  const bases: string[] = [];
+  afterAll(() => {
+    for (const b of bases) rmSync(b, { recursive: true, force: true });
+  });
+  /**
+   * A root with the script and the plugin, and a fake `claude` whose `plugin validate <folder> --strict` behaves as
+   * `kind` says: `honest` refuses a folder whose celebration module holds the control's line, with a type error in
+   * its report, and passes any other; `blind` passes everything; `other` refuses the control's folder for another
+   * reason; `broken` refuses every folder.
+   */
+  const stage = (kind: 'honest' | 'blind' | 'other' | 'broken') => {
+    const base = mkdtempSync(join(tmpdir(), 'plugin-control-'));
+    bases.push(base);
+    const root = join(base, 'root');
+    mkdirSync(join(root, 'scripts'), { recursive: true });
+    cpSync(join(ROOT, 'scripts/plugin-strict-control.sh'), join(root, 'scripts/plugin-strict-control.sh'));
+    for (const f of tracked('packages/plugin')) cpSync(join(ROOT, 'packages/plugin', f), join(root, 'packages/plugin', f), { recursive: true });
+    const bin = join(base, 'bin');
+    mkdirSync(bin);
+    const log = join(base, 'claude.log');
+    const verdict = {
+      honest: 'if has_control; then echo "  line 1, column 1: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1; fi; exit 0',
+      blind: 'exit 0',
+      other: 'if has_control; then echo "  author: No author information provided."; exit 1; fi; exit 0',
+      broken: 'echo "  line 1, column 1: error TS2322: something else."; exit 1',
+    }[kind];
+    writeFileSync(
+      join(bin, 'claude'),
+      `#!/usr/bin/env bash\n[ "$#" -eq 4 ] && [ "$1 $2" = "plugin validate" ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64\necho "$3" >> "${log}"\nhas_control() { grep -q 'strictControl' "$3/hooks/celebration.tsx"; }\n${verdict.replace(/has_control/g, 'has_control "$@"')}\n`,
+    );
+    chmodSync(join(bin, 'claude'), 0o755);
+    const run = (path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-strict-control.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path } });
+    const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
+    return { root, run, seen };
+  };
+  const hashes = (root: string) => tracked('packages/plugin').map((f) => `${f} ${readFileSync(join(root, 'packages/plugin', f)).toString('base64').length}`);
+
+  it('passes when the validator passes the plugin as it is and refuses the copy with the type error, for that error', () => {
+    const s = stage('honest');
+    const before = hashes(s.root);
+    const r = s.run();
+    expect(r.status, r.stderr).toBe(0);
+    // Two validations, each of a folder outside the checkout, both removed; the plugin's own files untouched.
+    expect(s.seen()).toHaveLength(2);
+    for (const dir of s.seen()) {
+      expect(dir.startsWith(s.root)).toBe(false);
+      expect(existsSync(dir)).toBe(false);
+    }
+    expect(hashes(s.root)).toEqual(before);
+    expect(readFileSync(join(s.root, 'packages/plugin/hooks/celebration.tsx'), 'utf8')).not.toContain('strictControl');
+  });
+
+  it('fails when the validator passes the type error: strict validation would then prove nothing', () => {
+    const r = stage('blind').run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/did not refuse/);
+  });
+
+  it('fails when the validator refuses the copy for another reason, and when it refuses the plugin as it is', () => {
+    const other = stage('other').run();
+    expect(other.status).toBe(1);
+    expect(other.stderr).toMatch(/error TS/);
+    const broken = stage('broken').run();
+    expect(broken.status).toBe(1);
+    expect(broken.stderr).toMatch(/as it is/);
+  });
+
+  it('refuses a PATH with no claude, and its error is one only strict null checks catch', () => {
+    const off = stage('honest').run('/usr/bin:/bin');
+    expect(off.status).toBe(1);
+    expect(off.stderr).toMatch(/claude is not on PATH/);
+    const sh = read('scripts/plugin-strict-control.sh');
+    expect(sh).toMatch(/^set -euo pipefail\r?$/m);
+    expect(sh).toContain('export const strictControl: number = null');
+  });
+});

@@ -117,7 +117,9 @@ describe('the plugin demo (development only)', () => {
     expect(read('.github/workflows/ci.yml')).toMatch(/bash scripts\/plugin-test\.sh\r?\n\s+bash scripts\/plugin-demo-test\.sh\r?\n/);
     // It lets the demo's own script validate what it assembles (strictly: the demo's type-check, next describe), and
     // the demo's manifest names an author, the one warning a strict validation would otherwise stop at.
-    expect(script).not.toMatch(/PLUGIN_DEMO_NO_VALIDATE/);
+    // It never skips that validation: it unsets the variable that would, and sets it nowhere.
+    expect(script).toMatch(/^unset PLUGIN_DEMO_NO_VALIDATE\r?$/m);
+    expect(script).not.toMatch(/PLUGIN_DEMO_NO_VALIDATE=/);
     expect((JSON.parse(read('packages/plugin-demo/.claude-plugin/plugin.json')) as { author?: { name?: unknown } }).author?.name).toBe('Arturo Garrido');
     // CI's plugin job validates the marketplace file and the plugin strictly too: the plugin's type-check.
     expect(read('.github/workflows/ci.yml')).toMatch(/claude plugin validate --strict \.\r?\n\s+claude plugin validate --strict packages\/plugin\r?\n/);
@@ -351,7 +353,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     const log = join(base, 'claude.log');
     // `claude plugin validate <dir> --strict` logs its words and passes; `claude plugin test <dir>`, those three words
     // and no more, logs the folder and its files and exits $STUB_EXIT; any other call is a usage error (64).
-    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then echo "$*" >> "${log}.validate"; exit 0; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`);
+    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then echo "$*" >> "${log}.validate"; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`);
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-demo-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
     const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
@@ -395,6 +397,19 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
       expect(r.stderr).toMatch(/replace/);
       expect(s.seen()).toEqual([]);
     }
+  });
+
+  it('a demo the validator refuses stops the run before the kit; a shell that exports the skip variable still validates', () => {
+    const s = stage();
+    const refused = s.run({ STUB_VALIDATE_EXIT: '1' });
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain('does not validate');
+    expect(s.validated()).toHaveLength(1);
+    expect(s.seen()).toEqual([]);
+    const t = stage();
+    expect(t.run({ PLUGIN_DEMO_NO_VALIDATE: '1' }).status).toBe(0);
+    expect(t.validated()).toHaveLength(1);
+    expect(t.seen().length).toBeGreaterThan(0);
   });
 
   it('refuses a kit that holds a link anywhere: the engine runs no linked test, so a link would be counted and never run', () => {
