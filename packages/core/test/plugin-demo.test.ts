@@ -121,6 +121,11 @@ describe('the plugin demo (development only)', () => {
     expect(script).toMatch(/^unset PLUGIN_DEMO_NO_VALIDATE\r?$/m);
     expect(script).not.toMatch(/PLUGIN_DEMO_NO_VALIDATE=/);
     expect((JSON.parse(read('packages/plugin-demo/.claude-plugin/plugin.json')) as { author?: { name?: unknown } }).author?.name).toBe('Arturo Garrido');
+    // The plugin job lets none of its steps fail quietly.
+    const ci = read('.github/workflows/ci.yml').replace(/\r\n/g, '\n');
+    const job = /\n {2}plugin:\n[\s\S]*?(?=\n {2}[a-z0-9-]+:\n|$)/.exec(ci)?.[0] ?? '';
+    expect(job).toContain('bash scripts/plugin-demo-test.sh');
+    expect(job).not.toMatch(/continue-on-error|\|\| *true|set \+e/);
     // CI's plugin job validates the marketplace file and the plugin strictly too: the plugin's type-check.
     expect(read('.github/workflows/ci.yml')).toMatch(/claude plugin validate --strict \.\r?\n\s+claude plugin validate --strict packages\/plugin\r?\n/);
     expect(read('AGENTS.md')).toContain('`bash scripts/plugin-demo-test.sh`');
@@ -351,9 +356,9 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     const bin = join(base, 'bin');
     mkdirSync(bin);
     const log = join(base, 'claude.log');
-    // `claude plugin validate <dir> --strict` logs its words and passes; `claude plugin test <dir>`, those three words
+    // `claude plugin validate <dir> --strict`, those four words and a folder that exists, logs its words and exits $STUB_VALIDATE_EXIT; `claude plugin test <dir>`, those three words
     // and no more, logs the folder and its files and exits $STUB_EXIT; any other call is a usage error (64).
-    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then echo "$*" >> "${log}.validate"; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`);
+    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; echo "$*" >> "${log}.validate"; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`);
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-demo-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
     const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
@@ -373,10 +378,12 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     // The demo was validated strictly, once, before the kit went in: its folder, then the flag.
     expect(s.validated()).toHaveLength(1);
     expect(s.validated()[0]).toMatch(/^plugin validate \/.+ --strict$/);
-    // A failing kit: its status is the script's, and the folder is removed all the same.
+    // A failing kit: its status is the script's (1 is the real command's for a failed test), and the folder is
+    // removed all the same.
+    expect(s.run({ STUB_EXIT: '1' }).status).toBe(1);
     const failed = s.run({ STUB_EXIT: '7' });
     expect(failed.status).toBe(7);
-    const second = (s.seen().filter((l) => l.startsWith('DIR '))[1] ?? '').replace(/^DIR /, '');
+    const second = (s.seen().filter((l) => l.startsWith('DIR '))[2] ?? '').replace(/^DIR /, '');
     expect(second).not.toBe('');
     expect(second).not.toBe(dir);
     expect(existsSync(second)).toBe(false);
@@ -416,6 +423,11 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     for (const make of [
       (kit: string) => symlinkSync(join(kit, 'hooks/demo.test.tsx'), join(kit, 'hooks/extra.test.tsx')),
       (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/notes.txt')),
+      // Deep in the kit, at a path the demo does not hold.
+      (kit: string) => {
+        mkdirSync(join(kit, 'hooks/fixtures/deep/er'), { recursive: true });
+        symlinkSync(join(kit, 'hooks/demo.test.tsx'), join(kit, 'hooks/fixtures/deep/er/extra.test.tsx'));
+      },
     ]) {
       const s = stage();
       make(s.kit);

@@ -99,6 +99,11 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
       (kit: string) => symlinkSync(join(kit, 'hooks/world.tsx'), join(kit, 'hooks/extra.test.tsx')),
       (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/notes.txt')),
       (kit: string) => symlinkSync(join(kit, 'hooks'), join(kit, 'more')),
+      // Deep in the kit, at a path the plugin does not hold.
+      (kit: string) => {
+        mkdirSync(join(kit, 'hooks/fixtures/deep/er'), { recursive: true });
+        symlinkSync(join(kit, 'hooks/world.tsx'), join(kit, 'hooks/fixtures/deep/er/extra.test.tsx'));
+      },
     ]) {
       const s = stage();
       make(s.kit);
@@ -147,11 +152,12 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
   });
   /**
    * A root with the script and the plugin, and a fake `claude` whose `plugin validate <folder> --strict` behaves as
-   * `kind` says: `honest` refuses a folder whose celebration module holds the control's line, with a type error in
-   * its report, and passes any other; `blind` passes everything; `other` refuses the control's folder for another
-   * reason; `broken` refuses every folder.
+   * `kind` says: `honest` refuses a folder whose celebration module holds the control's line AFTER the module's own
+   * text, with that line's type error in its report, and passes any other; `blind` passes everything; `other`
+   * refuses the control's folder for a reason that is no type error; `elsewhere` refuses it with a different type
+   * error (the one a module that lost its exports would give); `broken` refuses every folder.
    */
-  const stage = (kind: 'honest' | 'blind' | 'other' | 'broken') => {
+  const stage = (kind: 'honest' | 'blind' | 'other' | 'elsewhere' | 'broken') => {
     const base = mkdtempSync(join(tmpdir(), 'plugin-control-'));
     bases.push(base);
     const root = join(base, 'root');
@@ -162,14 +168,15 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     mkdirSync(bin);
     const log = join(base, 'claude.log');
     const verdict = {
-      honest: 'if has_control; then echo "  line 1, column 1: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1; fi; exit 0',
+      honest: 'if has_control; then echo "  line 164, column 14: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1; fi; exit 0',
+      elsewhere: 'if has_control; then echo "  line 19, column 10: error TS2305: Module \'\"./celebration\"\' has no exported member \'goalRow\'."; exit 1; fi; exit 0',
       blind: 'exit 0',
       other: 'if has_control; then echo "  author: No author information provided."; exit 1; fi; exit 0',
       broken: 'echo "  line 1, column 1: error TS2322: something else."; exit 1',
     }[kind];
     writeFileSync(
       join(bin, 'claude'),
-      `#!/usr/bin/env bash\n[ "$#" -eq 4 ] && [ "$1 $2" = "plugin validate" ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64\necho "$3" >> "${log}"\nhas_control() { grep -q 'strictControl' "$3/hooks/celebration.tsx"; }\n${verdict.replace(/has_control/g, 'has_control "$@"')}\n`,
+      `#!/usr/bin/env bash\n[ "$#" -eq 4 ] && [ "$1 $2" = "plugin validate" ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64\necho "$3" >> "${log}"\nhas_control() { grep -q 'strictControl' "$3/hooks/celebration.tsx" && grep -q 'export const celebrationRow' "$3/hooks/celebration.tsx"; }\n${verdict.replace(/has_control/g, 'has_control "$@"')}\n`,
     );
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-strict-control.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path } });
@@ -177,6 +184,19 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     return { root, run, seen };
   };
   const hashes = (root: string) => tracked('packages/plugin').map((f) => `${f} ${readFileSync(join(root, 'packages/plugin', f)).toString('base64').length}`);
+
+  it('the copy keeps the module whole: a control that REPLACED the module with its line is not refused by the honest fake, and fails', () => {
+    const s = stage('honest');
+    const sh = join(s.root, 'scripts/plugin-strict-control.sh');
+    const text = readFileSync(sh, 'utf8');
+    expect(text).toContain('>>');
+    // The append turned into an overwrite: the fake sees no module text beside the line and passes the folder.
+    writeFileSync(sh, text.replace(/>>(\s*"[^"\n]*celebration\.tsx")/, '>$1'));
+    expect(readFileSync(sh, 'utf8')).not.toBe(text);
+    const r = s.run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/did not refuse/);
+  });
 
   it('passes when the validator passes the plugin as it is and refuses the copy with the type error, for that error', () => {
     const s = stage('honest');
@@ -199,10 +219,14 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     expect(r.stderr).toMatch(/did not refuse/);
   });
 
-  it('fails when the validator refuses the copy for another reason, and when it refuses the plugin as it is', () => {
+  it('fails when the validator refuses the copy for another reason, a different type error included, and when it refuses the plugin as it is', () => {
     const other = stage('other').run();
     expect(other.status).toBe(1);
     expect(other.stderr).toMatch(/error TS/);
+    // A type error that is not the planted one (null given to a number) proves nothing about strict null checks.
+    const elsewhere = stage('elsewhere').run();
+    expect(elsewhere.status).toBe(1);
+    expect(elsewhere.stderr).toMatch(/TS2322/);
     const broken = stage('broken').run();
     expect(broken.status).toBe(1);
     expect(broken.stderr).toMatch(/as it is/);
