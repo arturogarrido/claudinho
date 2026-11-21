@@ -129,6 +129,11 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).toContain('plugin-test: 1 test files');
     expect(s.seen()).toContain('./hooks/score.test.ts');
+    // Refused by the validator, that kit runs no test either.
+    const refused = s.run({ STUB_VALIDATE_EXIT: '7' });
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('does not validate');
+    expect(s.seen().filter((l) => l.startsWith('DIR '))).toHaveLength(1);
   });
 
   it('a kit the validator refuses runs no test: the report is shown, the status is 1, the folder is removed', () => {

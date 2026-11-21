@@ -370,13 +370,13 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     mkdirSync(bin);
     const log = join(base, 'claude.log');
     // `claude plugin validate <dir> --strict`, those four words and a folder that exists, logs its words and whether
-    // the folder holds the kit (`kit=yes`), and exits $STUB_VALIDATE_EXIT, or $STUB_KIT_VALIDATE_EXIT for a folder that
+    // the folder holds the kit (`kit=yes`: a test file of either suffix anywhere in it), and exits $STUB_VALIDATE_EXIT, or $STUB_KIT_VALIDATE_EXIT for a folder that
     // holds the kit, with a report line when that one refuses; `claude plugin test <dir>`, those three words and no
     // more, logs the folder, its files and how many validations came before it, and exits $STUB_EXIT; any other call
     // is a usage error (64).
     writeFileSync(
       join(bin, 'claude'),
-      `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; kit=no; [ ! -e "$3/hooks/demo.test.tsx" ] || kit=yes; echo "$* kit=$kit" >> "${log}.validate"; [ "$kit" = no ] || (cd "$3" && find . ! -type d | sort) >> "${log}.validate.files"; if [ "$kit" = yes ] && [ "\${STUB_KIT_VALIDATE_EXIT:-0}" != 0 ]; then echo "  line 3, column 1: error TS2322: the fake validator's report."; exit "$STUB_KIT_VALIDATE_EXIT"; fi; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; echo "$(cat "${log}.validate" 2>/dev/null | wc -l | tr -d ' ')" >> "${log}.before"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`,
+      `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then [ "$#" -eq 4 ] && [ -d "$3" ] && [ "$4" = "--strict" ] || exit 64; kit=no; [ -z "$(find "$3" -name '*.test.ts' -o -name '*.test.tsx')" ] || kit=yes; echo "$* kit=$kit" >> "${log}.validate"; [ "$kit" = no ] || (cd "$3" && find . ! -type d | sort) >> "${log}.validate.files"; if [ "$kit" = yes ] && [ "\${STUB_KIT_VALIDATE_EXIT:-0}" != 0 ]; then echo "  line 3, column 1: error TS2322: the fake validator's report."; exit "$STUB_KIT_VALIDATE_EXIT"; fi; exit "\${STUB_VALIDATE_EXIT:-0}"; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; echo "$(cat "${log}.validate" 2>/dev/null | wc -l | tr -d ' ')" >> "${log}.before"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`,
     );
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-demo-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
@@ -486,6 +486,15 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).toContain('plugin-demo-test: 1 test files');
     expect(s.seen()).toContain('./hooks/score.test.ts');
+    expect(s.validated().map((l) => l.replace(/^.* /, ''))).toEqual(['kit=no', 'kit=yes']);
+    // Refused by the validator, that kit runs no test either.
+    const t = stage();
+    rmSync(join(t.kit, 'hooks/demo.test.tsx'));
+    writeFileSync(join(t.kit, 'hooks/score.test.ts'), 'export const x = 1\n');
+    const refused = t.run({ STUB_KIT_VALIDATE_EXIT: '7' });
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('does not validate');
+    expect(t.seen()).toEqual([]);
   });
 
   it('counts a test file once whatever its name holds: a newline in a name is one file, not two', () => {
