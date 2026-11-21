@@ -20,11 +20,18 @@
 # report must hold one line with `error TS2322`, `'null'` and `'number'` in it (the planted line gives "error TS2322:
 # Type 'null' is not assignable to type 'number'."); a refusal for any other reason, another type error included,
 # proves nothing about strict null checks, or about the test file being read. The fourth copy is what proves that the
-# validator reads a kit's test files, which is what makes the two kit scripts' validation a type-check. Anything else
-# exits 1, the validator's report on stderr where there is one: no `claude` on PATH, no plugin, no kit, a module or a
-# test file missing to write the error into, a copy as it is refused, a copy with the error passed, or refused with no
-# such line in its report (another type error, or none). On success it prints two lines, each quoting the line it
-# found (the module's, then the test file's), and exits 0.
+# validator reads a kit's test files, which is what makes the two kit scripts' validation a type-check.
+#
+# Before anything is copied or validated, it refuses a plugin or a kit that holds a symbolic link anywhere (to a file,
+# to a folder, or to nothing), and a plugin or a kit folder that is itself a link, naming every link on one line of
+# stderr. `cp -R` copies a link as a link, so the line appended to a copy would be written through a copied link into
+# whatever it names, a file of the checkout included; and a link in the plugin at a path the kit copies a file to
+# would take the kit's copy of that file through it as well.
+#
+# Each of these exits 1, the validator's report on stderr where there is one: no `claude` on PATH, no plugin, no kit,
+# a link, a module or a test file missing to write the error into, a copy as it is refused, a copy with the error
+# passed, or refused with no such line in its report (another type error, or none). On success it prints two lines,
+# each quoting the line it found (the module's, then the test file's), and exits 0.
 set -euo pipefail
 # A shell that exports CDPATH makes `cd` look there first and print where it went: every `cd` below means the name given.
 unset CDPATH
@@ -45,13 +52,14 @@ planted_line() {
 
 command -v claude >/dev/null 2>&1 || refuse "claude is not on PATH: the control runs \`claude plugin validate --strict\`, so nothing was validated"
 [ -f "$plugin/.claude-plugin/plugin.json" ] || refuse "no plugin at $plugin"
-[ -f "$plugin/hooks/celebration.tsx" ] || refuse "the plugin has no hooks/celebration.tsx to write the type error into"
 [ -d "$kit" ] || refuse "no kit at $kit: the control writes the type error into a test file of the plugin's kit too"
-# A regular file in a regular folder: the line is appended to the copy, and through a link it would reach whatever the
-# link names, a file of the checkout included.
-if [ -L "$kit/hooks" ] || [ -L "$kit/hooks/band.test.tsx" ] || [ ! -f "$kit/hooks/band.test.tsx" ]; then
-  refuse "the kit at $kit has no hooks/band.test.tsx (a regular file, in a folder that is no link) to write the type error into"
-fi
+# `find` follows no link, a folder it is given included: a link is listed as itself, whatever it points at (a dangling
+# one included), a linked folder is not entered, and the plugin or the kit, if it is a link itself, is listed by its
+# own path. Every entry is looked at, a name that starts with a dot included.
+links=$(find "$plugin" "$kit" -type l | tr '\n' ' ')
+[ -z "$links" ] || refuse "symbolic links in the plugin or its kit (or the folder itself a link), so nothing was copied or validated (\`cp -R\` copies a link as a link, and the type error appended to a copy would be written through it into whatever it names, a file of the checkout included): ${links% }"
+[ -f "$plugin/hooks/celebration.tsx" ] || refuse "the plugin has no hooks/celebration.tsx to write the type error into"
+[ -f "$kit/hooks/band.test.tsx" ] || refuse "the kit at $kit has no hooks/band.test.tsx to write the type error into"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
