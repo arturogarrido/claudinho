@@ -10,20 +10,20 @@
 # it there with `claude` on PATH.
 #
 # It refuses a kit that holds a symbolic link anywhere (to a file, to a folder, or to nothing): `claude plugin test`
-# runs regular files only, so a linked test file would be counted and never run, and a link elsewhere would be copied
-# as it is (`cp -R` copies a link, not what it names). With links refused, the test files counted are the regular files
-# named *.test.ts or *.test.tsx. It refuses, too, a kit entry that would replace an assembled one: a kit entry that is
-# not a folder (a file or a link, a dangling link included) is refused where the assembled demo holds anything at its
-# path; a kit folder is refused where the demo holds a file or a link there, and merges into a folder of the demo. The
-# links are refused beside that check, once the demo is assembled, so a link that would also replace an entry is named
-# on both lines. A refusal (no `claude` on PATH, no kit, no test file, a demo that does not assemble or validate, a
-# link, an entry that would replace one) exits 1 before the kit is copied or run. The temporary folder is removed on
-# exit. Otherwise its exit status is the kit's.
+# runs regular files only, so a linked test file would be copied and never run, and a link elsewhere would be copied
+# as it is (`cp -R` copies a link, not what it names). The test files counted are the regular files named *.test.ts or
+# *.test.tsx, one per entry (NUL-terminated, so a name that holds a newline counts once). It refuses, too, a kit entry
+# that would replace an assembled one: a kit entry that is not a folder (a file or a link, a dangling link included) is
+# refused where the assembled demo holds anything at its path; a kit folder is refused where the demo holds a file or
+# a link there, and merges into a folder of the demo. The links are refused beside that check, once the demo is
+# assembled, so a link that would also replace an entry is named on both lines. A refusal (no `claude` on PATH, no
+# kit, no test file, a demo that does not assemble or validate, a link, an entry that would replace one) exits 1
+# before the kit is copied or run. The temporary folder is removed on exit. Otherwise its exit status is the kit's.
 set -euo pipefail
 # A shell that exports CDPATH makes `cd` look there first and print where it went: every `cd` below means the name given.
 unset CDPATH
-# scripts/plugin-demo.sh skips its validation when this variable is set: a shell that exports it must not skip the
-# demo's type-check here.
+# scripts/plugin-demo.sh skips its validation when this variable is set to a value that is not empty: a shell that
+# exports it must not skip the demo's type-check here.
 unset PLUGIN_DEMO_NO_VALIDATE
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -33,7 +33,8 @@ refuse() { echo "plugin-demo-test: $1" >&2; exit 1; }
 
 command -v claude >/dev/null 2>&1 || refuse "claude is not on PATH: the kit runs under \`claude plugin test\`, so nothing was run"
 [ -d "$kit" ] || refuse "no kit at $kit"
-tests=$(cd "$kit" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | wc -l | tr -d ' ')
+# One NUL per entry, and the NULs counted: a name that holds a newline is one file, not two.
+tests=$(cd "$kit" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | LC_ALL=C tr -dc '\0' | wc -c | tr -d ' ')
 [ "$tests" -gt 0 ] || refuse "no test file under $kit"
 
 tmp=$(mktemp -d)
@@ -55,7 +56,7 @@ clash=$(cd "$kit" && {
     if [ -L "$demo/$f" ] || { [ -e "$demo/$f" ] && [ ! -d "$demo/$f" ]; }; then echo "$f/"; fi
   done
 })
-[ -z "$links" ] || echo "plugin-demo-test: kit entries that are symbolic links (claude plugin test runs regular files only, so a linked test would be counted and never run): $links" >&2
+[ -z "$links" ] || echo "plugin-demo-test: kit entries that are symbolic links (claude plugin test runs regular files only, so a linked test file would be copied and never run): $links" >&2
 [ -z "$clash" ] || echo "plugin-demo-test: kit entries that would replace entries of the assembled demo: $clash" >&2
 [ -z "$links$clash" ] || exit 1
 cp -R "$kit/." "$demo/"

@@ -11,10 +11,12 @@
 #
 # appended to hooks/celebration.tsx, an error only strict null checks catch. It validates both strictly under the
 # `claude` on PATH. The copy as it is must pass: a refusal of the other copy proves nothing about the error while the
-# plugin itself is refused. The copy with the error must be refused, and for a type error: the validator's report must
-# hold an `error TS` line. Anything else exits 1, the validator's report on stderr where there is one: no `claude` on
-# PATH, the copy as it is refused, the copy with the error passed, or refused with no type error in its report. On
-# success it prints one line quoting the `error TS` line it found, and exits 0.
+# plugin itself is refused. The copy with the error must be refused, and for the error it planted: the validator's
+# report must hold one line with `error TS2322`, `'null'` and `'number'` in it (the planted line gives "error TS2322:
+# Type 'null' is not assignable to type 'number'."); a refusal for any other reason, another type error included,
+# proves nothing about strict null checks. Anything else exits 1, the validator's report on stderr where there is one:
+# no `claude` on PATH, the copy as it is refused, the copy with the error passed, or refused with no such line in its
+# report (another type error, or none). On success it prints one line quoting the line it found, and exits 0.
 set -euo pipefail
 # A shell that exports CDPATH makes `cd` look there first and print where it went: every `cd` below means the name given.
 unset CDPATH
@@ -50,10 +52,11 @@ fi
 if report=$(claude plugin validate "$with_error" --strict 2>&1); then
   refuse "the validator did not refuse the copy with \`$control\` in hooks/celebration.tsx: strict validation is not the plugin's type-check under this claude"
 fi
-found=$(grep -m 1 'error TS' <<<"$report" || true)
+# The planted error's own line: its code, and the two types it names. Words matched as they are written (-F).
+found=$(grep -F 'error TS2322' <<<"$report" | grep -F "'null'" | grep -F -m 1 "'number'" || true)
 if [ -z "$found" ]; then
   printf '%s\n' "$report" >&2
-  refuse "the validator refused the copy with the type error, but its report (above) holds no error TS line: it refused it for another reason, and reported no type error"
+  refuse "the validator refused the copy with the type error, but its report (above) holds no error TS2322 line naming 'null' and 'number': the planted error was not reported, so the refusal proves nothing about strict null checks"
 fi
 # The line it found, without its indentation.
 found=${found#"${found%%[![:space:]]*}"}

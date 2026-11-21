@@ -8,14 +8,15 @@
 # one temporary folder and runs the kit there with `claude` on PATH.
 #
 # Before anything is copied or run, it refuses a kit that holds a symbolic link anywhere (to a file, to a folder, or to
-# nothing): `claude plugin test` runs regular files only, so a linked test file would be counted and never run, and a
-# link elsewhere would be copied as it is (`cp -R` copies a link, not what it names). With links refused, the test
-# files counted are the regular files named *.test.ts or *.test.tsx. It refuses, too, a kit entry that would replace
-# an entry of the plugin: a kit entry that is not a folder (a file or a link, a dangling link included) is refused
-# where the plugin holds anything at its path; a kit folder is refused where the plugin holds a file or a link there,
-# and merges into a folder of the plugin. A link that would also replace an entry is named on both lines. A refusal
-# (no `claude` on PATH, no plugin, no kit, a link, an entry that would replace one, no test file) exits 1 before
-# anything runs. The temporary folder is removed on exit. Otherwise its exit status is the kit's.
+# nothing): `claude plugin test` runs regular files only, so a linked test file would be copied and never run, and a
+# link elsewhere would be copied as it is (`cp -R` copies a link, not what it names). The test files counted are the
+# regular files named *.test.ts or *.test.tsx, one per entry (NUL-terminated, so a name that holds a newline counts
+# once). It refuses, too, a kit entry that would replace an entry of the plugin: a kit entry that is not a folder (a
+# file or a link, a dangling link included) is refused where the plugin holds anything at its path; a kit folder is
+# refused where the plugin holds a file or a link there, and merges into a folder of the plugin. A link that would
+# also replace an entry is named on both lines. A refusal (no `claude` on PATH, no plugin, no kit, a link, an entry
+# that would replace one, no test file) exits 1 before anything runs. The temporary folder is removed on exit.
+# Otherwise its exit status is the kit's.
 set -euo pipefail
 # A shell that exports CDPATH makes `cd` look there first and print where it went: every `cd` below means the name given.
 unset CDPATH
@@ -43,11 +44,12 @@ clash=$(cd "$kit" && {
     if [ -L "$plugin/$f" ] || { [ -e "$plugin/$f" ] && [ ! -d "$plugin/$f" ]; }; then echo "$f/"; fi
   done
 })
-[ -z "$links" ] || echo "plugin-test: kit entries that are symbolic links (claude plugin test runs regular files only, so a linked test would be counted and never run): $links" >&2
+[ -z "$links" ] || echo "plugin-test: kit entries that are symbolic links (claude plugin test runs regular files only, so a linked test file would be copied and never run): $links" >&2
 [ -z "$clash" ] || echo "plugin-test: kit entries that would replace entries of the plugin: $clash" >&2
 [ -z "$links$clash" ] || exit 1
 
-tests=$(cd "$kit" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | wc -l | tr -d ' ')
+# One NUL per entry, and the NULs counted: a name that holds a newline is one file, not two.
+tests=$(cd "$kit" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | LC_ALL=C tr -dc '\0' | wc -c | tr -d ' ')
 [ "$tests" -gt 0 ] || refuse "no test file under $kit"
 
 dir=$(mktemp -d)

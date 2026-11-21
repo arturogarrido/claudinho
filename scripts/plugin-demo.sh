@@ -18,7 +18,8 @@
 # the validator reports a type error in a hooks module or in what it imports as a warning, and --strict fails on a
 # warning, so that validation is the demo's type-check, under that `claude`. A demo that does not validate is an
 # error: the validator's report is printed on stderr and no folder is printed. With no `claude` on PATH, or with
-# PLUGIN_DEMO_NO_VALIDATE set, the demo is assembled and not validated, and the script says so.
+# PLUGIN_DEMO_NO_VALIDATE set to a value that is not empty, the demo is assembled and not validated, and the script
+# says so; PLUGIN_DEMO_NO_VALIDATE set to the empty string skips nothing.
 #
 # Then load the folder in a session of the desktop app (the scenes show in the desktop and mobile apps only; the
 # celebration also plays in a terminal's band, as text art):
