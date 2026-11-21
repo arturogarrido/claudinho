@@ -115,6 +115,12 @@ describe('the plugin demo (development only)', () => {
     expect(script).toMatch(/^\s*claude plugin test\b/m);
     // CI's plugin job runs it after the plugin's own kit.
     expect(read('.github/workflows/ci.yml')).toMatch(/bash scripts\/plugin-test\.sh\r?\n\s+bash scripts\/plugin-demo-test\.sh\r?\n/);
+    // It lets the demo's own script validate what it assembles (strictly: the demo's type-check, next describe), and
+    // the demo's manifest names an author, the one warning a strict validation would otherwise stop at.
+    expect(script).not.toMatch(/PLUGIN_DEMO_NO_VALIDATE/);
+    expect((JSON.parse(read('packages/plugin-demo/.claude-plugin/plugin.json')) as { author?: { name?: unknown } }).author?.name).toBe('Arturo Garrido');
+    // CI's plugin job validates the marketplace file and the plugin strictly too: the plugin's type-check.
+    expect(read('.github/workflows/ci.yml')).toMatch(/claude plugin validate --strict \.\r?\n\s+claude plugin validate --strict packages\/plugin\r?\n/);
     expect(read('AGENTS.md')).toContain('`bash scripts/plugin-demo-test.sh`');
   });
 
@@ -309,6 +315,9 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
     expect(r.status).toBe(0);
     const args = readFileSync(seen, 'utf8').trim().split('\n');
     expect(args.slice(0, 2)).toEqual(['plugin', 'validate']);
+    // Strictly: the validator's warnings fail it, and a type error in a module is one of its warnings. That is the
+    // demo's type-check, under whatever `claude` is on PATH (CI's pinned one, through `scripts/plugin-demo-test.sh`).
+    expect(args.slice(3)).toEqual(['--strict']);
     expect(args[2]?.startsWith('/')).toBe(true);
     expect(args[2]?.endsWith('/-P')).toBe(true);
     expect(r.stdout.trim()).toBe(args[2]);
@@ -334,12 +343,14 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     const bin = join(base, 'bin');
     mkdirSync(bin);
     const log = join(base, 'claude.log');
-    // `claude plugin validate <dir>` passes; `claude plugin test <dir>` logs the folder and its files, exits $STUB_EXIT.
-    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin test" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 0\n`);
+    // `claude plugin validate <dir> --strict` logs its words and passes; `claude plugin test <dir>`, those three words
+    // and no more, logs the folder and its files and exits $STUB_EXIT; any other call is a usage error (64).
+    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin validate" ]; then echo "$*" >> "${log}.validate"; exit 0; fi\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`);
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-demo-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
     const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
-    return { root, run, seen, kit: join(root, 'packages/plugin-demo-tests') };
+    const validated = () => (existsSync(`${log}.validate`) ? readFileSync(`${log}.validate`, 'utf8').split('\n').filter(Boolean) : []);
+    return { root, run, seen, validated, kit: join(root, 'packages/plugin-demo-tests') };
   };
 
   it('hands the kit the assembled demo with the kit\'s files in it, exits as the kit does, and removes its folder', () => {
@@ -351,6 +362,9 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     expect(lines.slice(1).sort()).toEqual(['./.claude-plugin/plugin.json', './hooks/demo.test.tsx', './hooks/hooks.json', './hooks/register.tsx', ...copies().map((f) => `./hooks/${f}`)].sort());
     expect(dir).not.toBe('');
     expect(existsSync(dir)).toBe(false);
+    // The demo was validated strictly, once, before the kit went in: its folder, then the flag.
+    expect(s.validated()).toHaveLength(1);
+    expect(s.validated()[0]).toMatch(/^plugin validate \/.+ --strict$/);
     // A failing kit: its status is the script's, and the folder is removed all the same.
     const failed = s.run({ STUB_EXIT: '7' });
     expect(failed.status).toBe(7);
@@ -373,6 +387,20 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
       const r = s.run();
       expect(r.status).toBe(1);
       expect(r.stderr).toMatch(/replace/);
+      expect(s.seen()).toEqual([]);
+    }
+  });
+
+  it('refuses a kit that holds a link anywhere: the engine runs no linked test, so a link would be counted and never run', () => {
+    for (const make of [
+      (kit: string) => symlinkSync(join(kit, 'hooks/demo.test.tsx'), join(kit, 'hooks/extra.test.tsx')),
+      (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/notes.txt')),
+    ]) {
+      const s = stage();
+      make(s.kit);
+      const r = s.run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/link/);
       expect(s.seen()).toEqual([]);
     }
   });

@@ -1,14 +1,10 @@
 /**
- * Two of the plugin's scripts, RUN: `scripts/plugin-test.sh` (the plugin's kit against the plugin) and
- * `scripts/plugin-typecheck.sh` (the plugin's and the demo's modules against the engine's type declarations).
+ * `scripts/plugin-test.sh` (the plugin's kit against the plugin), RUN, in a copy of the folders it reads, with a fake
+ * `claude` on PATH that records the folder it was handed and exits as told: what the script refuses, what it hands
+ * the kit, its status and its cleanup. The kit's own cases run under the real `claude` in CI's plugin job, never here.
  *
- * Each runs in a copy of the folders it reads. The kit's script gets a fake `claude` on PATH that records the folder
- * it was handed and exits as told: what the script refuses, what it hands the kit, its status and its cleanup (the
- * kit's own cases run under the real `claude` in CI's plugin job, never here). The type-check gets made-up modules
- * and a made-up declarations file with the workspace's own `tsc` on PATH: the real declarations are the engine's,
- * written where it loads a mod, and no command of the `claude` CLI writes them, so no test and no CI job holds them.
- *
- * A Windows checkout has no such shell on every runner, and both scripts are tools for a development machine.
+ * A Windows checkout has no such shell on every runner, and the script is a tool for a development machine and CI's
+ * Linux job.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -41,8 +37,9 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     const bin = join(base, 'bin');
     mkdirSync(bin);
     const log = join(base, 'claude.log');
-    // `claude plugin test <dir>` logs the folder and its files, then exits $STUB_EXIT.
-    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin test" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 0\n`);
+    // `claude plugin test <dir>`, those three words and no more, logs the folder and its files, then exits $STUB_EXIT;
+    // any other call is a usage error (64), as an added flag would make the real command do something else.
+    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$#" -eq 3 ] && [ "$1 $2" = "plugin test" ] && [ -d "$3" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 64\n`);
     chmodSync(join(bin, 'claude'), 0o755);
     const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
     const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
@@ -59,10 +56,12 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(lines.slice(1).sort()).toEqual([...tracked('packages/plugin'), ...tracked('packages/plugin-tests')].map((f) => `./${f}`).sort());
     expect(dir).not.toBe('');
     expect(existsSync(dir)).toBe(false);
-    // A failing kit: its status is the script's, and the folder is removed all the same.
+    // A failing kit: its status is the script's (1 is the real command's for a failed test), and the folder is
+    // removed all the same.
+    expect(s.run({ STUB_EXIT: '1' }).status).toBe(1);
     const failed = s.run({ STUB_EXIT: '7' });
     expect(failed.status).toBe(7);
-    const second = (s.seen().filter((l) => l.startsWith('DIR '))[1] ?? '').replace(/^DIR /, '');
+    const second = (s.seen().filter((l) => l.startsWith('DIR '))[2] ?? '').replace(/^DIR /, '');
     expect(second).not.toBe('');
     expect(second).not.toBe(dir);
     expect(existsSync(second)).toBe(false);
@@ -77,12 +76,29 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
       (kit: string) => mkdirSync(join(kit, 'hooks/register.tsx')),
       // A kit file where the plugin holds a folder.
       (kit: string) => writeFileSync(join(kit, 'types'), 'x\n'),
+      // A kit manifest: a path that starts with a dot is listed too.
+      (kit: string) => put(join(kit, '.claude-plugin/plugin.json'), '{ "name": "other" }\n'),
     ]) {
       const s = stage();
       make(s.kit);
       const r = s.run();
       expect(r.status).toBe(1);
       expect(r.stderr).toMatch(/replace/);
+      expect(s.seen()).toEqual([]);
+    }
+  });
+
+  it('refuses a kit that holds a link anywhere, a test file\'s name included: the engine runs no linked test, so a link would be counted and never run', () => {
+    for (const make of [
+      (kit: string) => symlinkSync(join(kit, 'hooks/world.tsx'), join(kit, 'hooks/extra.test.tsx')),
+      (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/notes.txt')),
+      (kit: string) => symlinkSync(join(kit, 'hooks'), join(kit, 'more')),
+    ]) {
+      const s = stage();
+      make(s.kit);
+      const r = s.run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/link/);
       expect(s.seen()).toEqual([]);
     }
   });
@@ -111,108 +127,5 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(sh).toMatch(/^set -euo pipefail\r?$/m);
     expect(sh).toMatch(/^unset CDPATH\r?$/m);
     expect(sh).toMatch(/^\s*claude plugin test\b/m);
-  });
-});
-
-// The type-check. Made-up files: a declarations file that declares the module `claude-code` with one type, a plugin of
-// one typed module and its contract, a demo of one module, and the plugin modules the demo's script copies, as
-// one-line files. The compiler is the workspace's own.
-describe.skipIf(process.platform === 'win32')('scripts/plugin-typecheck.sh, run', () => {
-  const TSC_BIN = join(ROOT, 'packages/core/node_modules/.bin');
-  const copies = () => (/^copies=\(([^)]*)\)\r?$/m.exec(read('scripts/plugin-demo.sh'))?.[1] ?? '').split(/\s+/).filter(Boolean);
-  const DECLARATIONS = "// Written by Claude Code 9.9.9.\ndeclare module 'claude-code' {\n  export type Register = (on: (event: string, hook: () => number) => void) => void\n}\n";
-  const stage = () => {
-    const base = mkdtempSync(join(tmpdir(), 'plugin-typecheck-'));
-    const root = join(base, 'root');
-    mkdirSync(join(root, 'scripts'), { recursive: true });
-    for (const f of ['scripts/plugin-typecheck.sh', 'scripts/plugin-demo.sh']) cpSync(join(ROOT, f), join(root, f));
-    // The plugin: a manifest, its contract, one hooks module that uses both, and the modules the demo's script copies.
-    put(join(root, 'packages/plugin/.claude-plugin/plugin.json'), '{ "name": "p", "version": "9.9.9", "types": "./types/index.d.ts" }\n');
-    put(join(root, 'packages/plugin/types/index.d.ts'), 'export type Count = { n: number }\n');
-    put(join(root, 'packages/plugin/hooks/hooks.json'), '{ "modules": ["./register.tsx"] }\n');
-    put(join(root, 'packages/plugin/hooks/register.tsx'), "import type { Register } from 'claude-code'\nimport type { Count } from '../types'\n\nconst count: Count = { n: 1 }\nexport const register: Register = (on) => on('x', () => count.n)\n");
-    for (const f of copies()) put(join(root, 'packages/plugin/hooks', f), f.endsWith('.d.ts') ? 'export declare const made: number\n' : 'export const made = 1\n');
-    // The demo: its manifest and one module that imports a copied module.
-    put(join(root, 'packages/plugin-demo/.claude-plugin/plugin.json'), '{ "name": "d", "version": "0.0.0" }\n');
-    put(join(root, 'packages/plugin-demo/hooks/hooks.json'), '{ "modules": ["./register.tsx"] }\n');
-    put(join(root, 'packages/plugin-demo/hooks/register.tsx'), "import type { Register } from 'claude-code'\nimport { made } from './team-look'\n\nexport const register: Register = (on) => on('y', () => made)\n");
-    const file = join(base, 'claude-code.d.ts');
-    writeFileSync(file, DECLARATIONS);
-    // The engine's own layout: a folder holding claude-code/index.d.ts.
-    const folder = join(base, 'types');
-    put(join(folder, 'claude-code/index.d.ts'), DECLARATIONS);
-    // The compiler's launcher runs `node`: this process's own is on the PATH beside it.
-    const run = (args: string[], path = `${TSC_BIN}:${dirname(process.execPath)}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-typecheck.sh'), ...args], { encoding: 'utf8', timeout: 120_000, env: { ...process.env, PATH: path } });
-    return { root, run, file, folder };
-  };
-  const out = (r: { stdout: string; stderr: string }) => `${r.stdout}\n${r.stderr}`;
-
-  it('passes modules that type-check, given the declarations as a file or as the engine\'s folder, and says which declarations it read', { timeout: 240_000 }, () => {
-    const s = stage();
-    for (const given of [s.file, s.folder]) {
-      const r = s.run([given]);
-      expect(r.status, out(r)).toBe(0);
-      expect(out(r)).toContain('Written by Claude Code 9.9.9.');
-      expect(out(r)).toMatch(/plugin: ok/);
-      expect(out(r)).toMatch(/demo: ok/);
-    }
-  });
-
-  it('fails on a type error in the plugin\'s module, naming the file, and still checks the demo', { timeout: 240_000 }, () => {
-    const s = stage();
-    put(join(s.root, 'packages/plugin/hooks/register.tsx'), "import type { Register } from 'claude-code'\n\nexport const register: Register = (on) => on('x', () => 'not a number')\n");
-    const r = s.run([s.file]);
-    expect(r.status).toBe(1);
-    expect(out(r)).toMatch(/hooks\/register\.tsx/);
-    expect(out(r)).toMatch(/error TS\d+/);
-    expect(out(r)).toMatch(/demo: ok/);
-    expect(out(r)).not.toMatch(/plugin: ok/);
-  });
-
-  it('fails on a type error in the demo\'s module, and on one in a plugin module the demo copies', { timeout: 240_000 }, () => {
-    const s = stage();
-    put(join(s.root, 'packages/plugin-demo/hooks/register.tsx'), "import type { Register } from 'claude-code'\n\nexport const register: Register = (on) => on(1, () => 2)\n");
-    const r = s.run([s.file]);
-    expect(r.status).toBe(1);
-    expect(out(r)).toMatch(/plugin: ok/);
-    expect(out(r)).not.toMatch(/demo: ok/);
-    const t = stage();
-    put(join(t.root, 'packages/plugin/hooks/team-look.ts'), "export const made: number = 'one'\n");
-    const both = t.run([t.file]);
-    expect(both.status).toBe(1);
-    expect(out(both)).not.toMatch(/plugin: ok/);
-    expect(out(both)).not.toMatch(/demo: ok/);
-  });
-
-  it('refuses, before any check, with no declarations, with a path that holds none, and with no tsc on PATH', () => {
-    const s = stage();
-    const none = s.run([]);
-    expect(none.status).toBe(1);
-    expect(none.stderr).toMatch(/declarations/);
-    for (const bad of [join(s.root, 'nowhere.d.ts'), join(s.root, 'scripts')]) {
-      const r = s.run([bad]);
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/declarations/);
-      expect(out(r)).not.toMatch(/: ok/);
-    }
-    const off = s.run([s.file], '/usr/bin:/bin');
-    expect(off.status).toBe(1);
-    expect(off.stderr).toMatch(/tsc is not on PATH/);
-  });
-
-  it('writes nothing into the checkout: the plugin\'s and the demo\'s folders hold what they held', { timeout: 240_000 }, () => {
-    const s = stage();
-    const listing = () => execFileSync('find', [s.root, '!', '-type', 'd'], { encoding: 'utf8' }).split('\n').filter(Boolean).sort();
-    const before = listing();
-    expect(s.run([s.file]).status).toBe(0);
-    expect(listing()).toEqual(before);
-  });
-
-  it('the guides name it, say it is run by hand, and say why CI does not run it', () => {
-    const agents = read('AGENTS.md');
-    const bullet = /- `bash scripts\/plugin-typecheck\.sh <declarations>`[^\n]*/.exec(agents)?.[0] ?? '';
-    expect(bullet).toMatch(/no command/);
-    expect(bullet).toMatch(/CI/);
-    expect(read('.github/workflows/ci.yml')).not.toContain('plugin-typecheck');
   });
 });
