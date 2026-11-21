@@ -67,10 +67,11 @@ describe("the plugin's type contract, compiled", () => {
     expect(diagnostics(`${CONTRACT}\nexport type = 1\n`).length).toBeGreaterThan(0);
   });
 
-  it('is held to what a module reads of it: the stub is loaded, and a type the contract stops exporting is an error', () => {
+  it('is held to what a module reads of it: the stub is loaded, and a contract whose types are all local is an error', () => {
     // The stub is part of the compilation: an error planted in it is reported.
     expect(diagnostics(CONTRACT, 'export interface PluginState { x: NotDeclared }\n').join('\n')).toContain("Cannot find name 'NotDeclared'.");
-    // The contract's types turned local: no module could import them.
+    // Every type of the contract turned local: the file is no module, and no module could import from it. (One type
+    // turned local is not an error for this compiler; the validator's own contract rule refuses that in CI.)
     const local = CONTRACT.replace(/^export type /gm, 'type ');
     expect(local).not.toBe(CONTRACT);
     expect(diagnostics(local).length).toBeGreaterThan(0);

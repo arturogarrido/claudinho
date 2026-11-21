@@ -8,7 +8,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -459,22 +459,27 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     }
   });
 
-  it('refuses a test file at the kit\'s root: the engine would run it, and the validator reads no file there, so it would run without its type-check', () => {
-    for (const name of ['extra.test.tsx', 'extra.test.ts']) {
+  it('refuses a test file outside the kit\'s hooks folder: the engine would run it, and the validator type-checks no test file there, so it would run without its type-check', () => {
+    // At the root, and in folders the validator was measured not to read (`more`, `test`, `lib`) or to read (`tests`):
+    // one rule, the kit's layout, whatever the validator reads beyond it.
+    for (const name of ['extra.test.tsx', 'extra.test.ts', 'more/extra.test.tsx', 'test/probe.test.ts', 'lib/deep/er/x.test.tsx', 'tests/x.test.ts', 'hooks2/x.test.tsx']) {
       const s = stage();
+      mkdirSync(dirname(join(s.kit, name)), { recursive: true });
       writeFileSync(join(s.kit, name), 'export const bad: number = 1\n');
       const r = s.run();
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/root/);
-      expect(r.stderr).toContain(name);
-      expect(s.seen()).toEqual([]);
+      expect(r.status, name).toBe(1);
+      expect(r.stderr, name).toMatch(/hooks/);
+      expect(r.stderr, name).toContain(name);
+      expect(s.seen(), name).toEqual([]);
       expect(s.validated().filter((l) => l.endsWith('kit=yes'))).toEqual([]);
     }
-    // A helper at the root is not a test file, and a test file in any folder is read: neither is refused.
+    // A helper anywhere is not a test file, and a test file anywhere under hooks is read: neither is refused.
     const s = stage();
     writeFileSync(join(s.kit, 'helper.ts'), 'export const x = 1\n');
     mkdirSync(join(s.kit, 'more'));
-    writeFileSync(join(s.kit, 'more/extra.test.tsx'), 'export const x = 1\n');
+    writeFileSync(join(s.kit, 'more/helper.tsx'), 'export const x = 1\n');
+    mkdirSync(join(s.kit, 'hooks/sub/deep'), { recursive: true });
+    writeFileSync(join(s.kit, 'hooks/sub/deep/extra.test.tsx'), 'export const x = 1\n');
     expect(s.run().status).toBe(0);
   });
 
