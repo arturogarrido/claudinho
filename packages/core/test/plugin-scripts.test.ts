@@ -7,6 +7,7 @@
  * Linux job.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -171,7 +172,8 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
       honest: 'if has_control; then echo "  line 164, column 14: error TS2322: Type \'null\' is not assignable to type \'number\'."; exit 1; fi; exit 0',
       elsewhere: 'if has_control; then echo "  line 19, column 10: error TS2305: Module \'\"./celebration\"\' has no exported member \'goalRow\'."; exit 1; fi; exit 0',
       blind: 'exit 0',
-      other: 'if has_control; then echo "  author: No author information provided."; exit 1; fi; exit 0',
+      // The real validator's report for a refusal that is no type error: the warning, then its closing line.
+      other: 'if has_control; then echo "  author: No author information provided."; echo "Validation failed (--strict treats warnings as errors)"; exit 1; fi; exit 0',
       broken: 'echo "  line 1, column 1: error TS2322: something else."; exit 1',
     }[kind];
     writeFileSync(
@@ -183,7 +185,12 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
     return { root, run, seen };
   };
-  const hashes = (root: string) => tracked('packages/plugin').map((f) => `${f} ${readFileSync(join(root, 'packages/plugin', f)).toString('base64').length}`);
+  const hashes = (root: string) => tracked('packages/plugin').map((f) => `${f} ${createHash('sha256').update(readFileSync(join(root, 'packages/plugin', f))).digest('hex')}`);
+  /** Every folder the fake validator was handed is gone, and the plugin's own files are as they were. */
+  const leftNothing = (s: { root: string; seen: () => string[] }, before: string[]) => {
+    for (const dir of s.seen()) expect(existsSync(dir), dir).toBe(false);
+    expect(hashes(s.root)).toEqual(before);
+  };
 
   it('the copy keeps the module whole: a control that REPLACED the module with its line is not refused by the honest fake, and fails', () => {
     const s = stage('honest');
@@ -214,22 +221,31 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
   });
 
   it('fails when the validator passes the type error: strict validation would then prove nothing', () => {
-    const r = stage('blind').run();
+    const s = stage('blind');
+    const before = hashes(s.root);
+    const r = s.run();
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/did not refuse/);
+    expect(s.seen()).toHaveLength(2);
+    leftNothing(s, before);
   });
 
   it('fails when the validator refuses the copy for another reason, a different type error included, and when it refuses the plugin as it is', () => {
-    const other = stage('other').run();
+    const o = stage('other');
+    const before = hashes(o.root);
+    const other = o.run();
     expect(other.status).toBe(1);
     expect(other.stderr).toMatch(/error TS/);
+    leftNothing(o, before);
     // A type error that is not the planted one (null given to a number) proves nothing about strict null checks.
     const elsewhere = stage('elsewhere').run();
     expect(elsewhere.status).toBe(1);
     expect(elsewhere.stderr).toMatch(/TS2322/);
-    const broken = stage('broken').run();
+    const b = stage('broken');
+    const broken = b.run();
     expect(broken.status).toBe(1);
     expect(broken.stderr).toMatch(/as it is/);
+    leftNothing(b, hashes(b.root));
   });
 
   it('refuses a PATH with no claude, and its error is one only strict null checks catch', () => {

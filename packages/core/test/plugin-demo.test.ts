@@ -126,6 +126,8 @@ describe('the plugin demo (development only)', () => {
     const job = /\n {2}plugin:\n[\s\S]*?(?=\n {2}[a-z0-9-]+:\n|$)/.exec(ci)?.[0] ?? '';
     expect(job).toContain('bash scripts/plugin-demo-test.sh');
     expect(job).not.toMatch(/continue-on-error|\|\| *true|set \+e/);
+    // And none is conditional or run by a shell that ignores a failing line.
+    expect(job).not.toMatch(/^\s+(?:- )?(?:if|shell):/m);
     // CI's plugin job validates the marketplace file and the plugin strictly too: the plugin's type-check.
     expect(read('.github/workflows/ci.yml')).toMatch(/claude plugin validate --strict \.\r?\n\s+claude plugin validate --strict packages\/plugin\r?\n/);
     expect(read('AGENTS.md')).toContain('`bash scripts/plugin-demo-test.sh`');
@@ -423,6 +425,8 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     for (const make of [
       (kit: string) => symlinkSync(join(kit, 'hooks/demo.test.tsx'), join(kit, 'hooks/extra.test.tsx')),
       (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/notes.txt')),
+      // A link to a folder.
+      (kit: string) => symlinkSync(join(kit, 'hooks'), join(kit, 'more')),
       // Deep in the kit, at a path the demo does not hold.
       (kit: string) => {
         mkdirSync(join(kit, 'hooks/fixtures/deep/er'), { recursive: true });
