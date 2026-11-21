@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, test, type TestBody } from 'claude-code/testing'
 import { WIDTH_CORPUS } from './width-corpus'
 import { NOW, drawnRows, view, world } from './world'
 
@@ -232,7 +232,7 @@ const shown = async (pane: Mounted, text: string) => (await pane.findAll({ type:
 const trimmedRows = async (pane: Mounted) => (await drawnRows(pane)).map((r) => (r.trim() === '' ? '' : r))
 
 /** The pane, opened on `rows` (or a lines-only answer), drawn at `w`. */
-const open = async ($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1], a: string, surface: 'terminal' | 'desktop' = 'terminal', w?: Parameters<Awaited<ReturnType<typeof world>>['mountPane']>[1]) => {
+const open = async ($: Parameters<TestBody>[0], on: Parameters<TestBody>[1], a: string, surface: 'terminal' | 'desktop' = 'terminal', w?: Parameters<Awaited<ReturnType<typeof world>>['mountPane']>[1]) => {
   const wd = await world($, on, [live()], { matchAnswers: [a] })
   await wd.command('match')
   return wd.mountPane(surface, w)

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, test, type TestBody } from 'claude-code/testing'
 import { view, world } from './world'
 
 /**
@@ -35,7 +35,7 @@ const live = (items: Array<Record<string, unknown>>, over: Record<string, unknow
     ...over,
   })
 
-const toasted = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+const toasted = (on: Parameters<TestBody>[1]) => {
   const texts: string[] = []
   on('ui.toast', (_$, e) => {
     texts.push(e.text)

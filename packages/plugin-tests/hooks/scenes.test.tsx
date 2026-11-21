@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, test, type TestBody } from 'claude-code/testing'
 import { FLAGS_APPROVED, NO_FLAG } from './flag-colors.approved'
 import { FLAG_COLORS, TEAM_COLORS } from './team-colors'
 import { buildLook, flagForPick } from './team-look'
@@ -38,8 +38,8 @@ const NEXT_ARS = { next: { id: '1', home: { code: 'ARS', name: 'Arsenal', id: 'e
 const NEXT_LIV = { next: { id: '2', home: { code: 'LIV', name: 'Liverpool', id: 'espn:364' }, away: { code: 'EVE', name: 'Everton', id: 'espn:368' }, status: 'SCHEDULED' } }
 const GOAL_MS = 6_000
 
-type Kit$ = Parameters<Parameters<typeof test>[1]>[0]
-type On = Parameters<Parameters<typeof test>[1]>[1]
+type Kit$ = Parameters<TestBody>[0]
+type On = Parameters<TestBody>[1]
 type SetArgs = { colors: unknown; backdrop: { scene: string; glass: { blur: number; opacity: number } } }
 
 /** The engine beneath: every theme set as it arrives (`deny(n)` refuses the nth, from 1), and every clear. */
@@ -979,7 +979,7 @@ describe('sets the engine refuses, names, the off and a reload', () => {
   test('the theme command says what it said in 0.8.0, whatever the scene', PIXEL, async ($, on) => {
     engine(on)
     const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
-    expect((await command('theme')).text.startsWith('Team look: Arsenal.')).toBe(true)
+    expect((await command('theme'))?.text?.startsWith('Team look: Arsenal.')).toBe(true)
   })
 })
 

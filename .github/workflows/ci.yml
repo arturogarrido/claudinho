@@ -234,11 +234,13 @@ jobs:
   # file and its hooks module validated strictly (--strict fails on a warning, and the validator reports a type error in
   # a hooks module or in what it imports as a warning, so the strict validation is also the modules' type-check, and
   # scripts/plugin-strict-control.sh, its negative control, requires the validator to refuse a copy of the plugin with
-  # a type error written in, for that error), and its tests (packages/plugin-tests, kept out of the folder that
-  # installs) run against it by the engine's own kit through scripts/plugin-test.sh, under the pinned Claude Code CLI.
+  # a type error written in, and a copy of the plugin with its kit with the same error in a test file, each for that
+  # error), and its tests (packages/plugin-tests, kept out of the folder that installs) run against it by the engine's
+  # own kit through scripts/plugin-test.sh, under the pinned Claude Code CLI, once the plugin with its kit validates
+  # strictly (the kit's type-check).
   # Then the development-only demo (packages/plugin-demo), assembled from this checkout and validated strictly by
   # scripts/plugin-demo.sh (the demo's type-check), with its own kit (packages/plugin-demo-tests) through
-  # scripts/plugin-demo-test.sh: its two celebration commands are run, not read.
+  # scripts/plugin-demo-test.sh, which validates the demo with its kit too: its two celebration commands are run, not read.
   # The job's name carries no version, so a pin bump leaves the ruleset's required check as it is.
   plugin:
     name: plugin (validate · test)
