@@ -330,6 +330,17 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
     expect(args[2]?.startsWith('/')).toBe(true);
     expect(args[2]?.endsWith('/-P')).toBe(true);
     expect(r.stdout.trim()).toBe(args[2]);
+    // The variable that skips validation skips it only when it holds a value: set to nothing, the demo is validated.
+    rmSync(seen);
+    const unset = at(base, 'empty-value', { ...env, PLUGIN_DEMO_NO_VALIDATE: '' });
+    expect(unset.status).toBe(0);
+    expect(unset.stderr).toContain('validated');
+    expect(existsSync(seen)).toBe(true);
+    rmSync(seen);
+    const skipped = at(base, 'skipped', { ...env, PLUGIN_DEMO_NO_VALIDATE: '1' });
+    expect(skipped.status).toBe(0);
+    expect(skipped.stderr).toContain('not validated');
+    expect(existsSync(seen)).toBe(false);
     // A demo the validator refuses is an error, and no folder is printed.
     const bad = at(base, 'refused', { ...env, FAKE_REFUSES: '1' });
     expect(bad.status).toBe(1);
@@ -445,7 +456,9 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
   it('refuses a kit with no test file, and a PATH with no claude, before anything runs', () => {
     const empty = stage();
     rmSync(join(empty.kit, 'hooks/demo.test.tsx'));
+    // Helpers alone, of both suffixes: neither is a test file.
     writeFileSync(join(empty.kit, 'hooks/helper.ts'), 'export const x = 1\n');
+    writeFileSync(join(empty.kit, 'hooks/world.tsx'), 'export const y = 2\n');
     const none = empty.run();
     expect(none.status).toBe(1);
     expect(none.stderr).toMatch(/no test file/);

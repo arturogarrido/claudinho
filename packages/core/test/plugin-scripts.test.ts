@@ -242,10 +242,11 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-strict-control.sh,
     expect(elsewhere.status).toBe(1);
     expect(elsewhere.stderr).toMatch(/TS2322/);
     const b = stage('broken');
+    const untouched = hashes(b.root);
     const broken = b.run();
     expect(broken.status).toBe(1);
     expect(broken.stderr).toMatch(/as it is/);
-    leftNothing(b, hashes(b.root));
+    leftNothing(b, untouched);
   });
 
   it('refuses a PATH with no claude, and its error is one only strict null checks catch', () => {
