@@ -19,8 +19,12 @@
 # once). It refuses, too, a kit entry that would replace an entry of the plugin: a kit entry that is not a folder (a
 # file or a link, a dangling link included) is refused where the plugin holds anything at its path; a kit folder is
 # refused where the plugin holds a file or a link there, and merges into a folder of the plugin. A link that would
-# also replace an entry is named on both lines. A refusal exits 1 before the kit runs: no `claude` on PATH, no plugin,
-# no kit, a link, an entry that would replace one or no test file, before anything is copied or run; and, once the
+# also replace an entry is named on both lines. It refuses, beside those, a test file directly at the kit's root (a
+# regular file named *.test.ts or *.test.tsx there, its name read whole): `claude plugin test` runs it, and
+# `claude plugin validate` reads the .ts and .tsx files in every folder of the tree but none at its root, so it would
+# run without its type-check. A test file in a folder of the kit, and a file at the root that is not a test file, are
+# not refused. A refusal exits 1 before the kit runs: no `claude` on PATH, no plugin, no kit, a link, an entry that
+# would replace one, a test file at the kit's root or no test file, before anything is copied or run; and, once the
 # two are copied, a plugin with its kit that does not validate strictly, whatever the validator's status (its report
 # is printed on stderr). The temporary folder is removed on exit. Otherwise its exit status is the kit's.
 set -euo pipefail
@@ -50,9 +54,12 @@ clash=$(cd "$kit" && {
     if [ -L "$plugin/$f" ] || { [ -e "$plugin/$f" ] && [ ! -d "$plugin/$f" ]; }; then echo "$f/"; fi
   done
 })
+# The test files directly at the kit's root, their names read whole (NUL-separated): the validator reads no file there.
+atroot=$(cd "$kit" && find . -mindepth 1 -maxdepth 1 -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | while IFS= read -r -d '' f; do echo "$f"; done)
 [ -z "$links" ] || echo "plugin-test: kit entries that are symbolic links (claude plugin test runs regular files only, so a linked test file would be copied and never run): $links" >&2
 [ -z "$clash" ] || echo "plugin-test: kit entries that would replace entries of the plugin: $clash" >&2
-[ -z "$links$clash" ] || exit 1
+[ -z "$atroot" ] || echo "plugin-test: kit test files at the kit's root (claude plugin test would run them, and claude plugin validate reads no file at the root, so they would run without their type-check; put them in a folder of the kit): $atroot" >&2
+[ -z "$links$clash$atroot" ] || exit 1
 
 # One NUL per entry, and the NULs counted: a name that holds a newline is one file, not two.
 tests=$(cd "$kit" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | LC_ALL=C tr -dc '\0' | wc -c | tr -d ' ')
