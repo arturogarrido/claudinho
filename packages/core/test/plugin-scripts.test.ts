@@ -102,7 +102,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(s.validatedFiles()).toContain('./hooks/register.tsx');
   });
 
-  it('refuses a test file outside the kit\'s hooks folder: the engine would run it, and the validator type-checks no test file there, so it would run without its type-check', () => {
+  it('refuses a test file outside the kit\'s hooks folder: the engine would run it, and the kit\'s layout puts test files under hooks, where the validator type-checks them', () => {
     // At the root, and in folders the validator was measured not to read (`more`, `test`, `lib`, a `hooks` folder that
     // is not the kit's own top-level one) or to read (`tests`): one rule, the kit's layout, whatever the validator
     // reads beyond it.
