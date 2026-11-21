@@ -4,8 +4,8 @@
  *
  * Each runs in a copy of the folders it reads. The kit's script gets a fake `claude` on PATH that records the folder
  * it was handed and exits as told: what the script refuses, what it hands the kit, its status and its cleanup (the
- * kit's own cases run under the real `claude` in CI's plugin job, never here). The type-check gets stand-in modules
- * and a stand-in declarations file with the workspace's own `tsc` on PATH: the real declarations are the engine's,
+ * kit's own cases run under the real `claude` in CI's plugin job, never here). The type-check gets made-up modules
+ * and a made-up declarations file with the workspace's own `tsc` on PATH: the real declarations are the engine's,
  * written where it loads a mod, and no command of the `claude` CLI writes them, so no test and no CI job holds them.
  *
  * A Windows checkout has no such shell on every runner, and both scripts are tools for a development machine.
@@ -113,7 +113,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
   });
 });
 
-// The type-check. Stand-ins: a declarations file that declares the module `claude-code` with one type, a plugin of
+// The type-check. Made-up files: a declarations file that declares the module `claude-code` with one type, a plugin of
 // one typed module and its contract, a demo of one module, and the plugin modules the demo's script copies, as
 // one-line files. The compiler is the workspace's own.
 describe.skipIf(process.platform === 'win32')('scripts/plugin-typecheck.sh, run', () => {
