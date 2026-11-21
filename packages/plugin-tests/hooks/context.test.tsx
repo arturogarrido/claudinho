@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, test, type TestBody } from 'claude-code/testing'
 import { view, world } from './world'
 
 /**
@@ -17,7 +17,7 @@ const current = (over: Record<string, unknown> = {}) =>
   })
 
 /** The bottom `prompt.submit` hook is registered by `world()`, before the test first calls `$` (the kit's rule). */
-const submit = async ($: Parameters<Parameters<typeof test>[1]>[0]) => $.prompt.submit({ text: 'what changed?' })
+const submit = async ($: Parameters<TestBody>[0]) => $.prompt.submit({ text: 'what changed?', wait: false, origin: { kind: 'composer' } })
 
 describe('what a prompt carries', () => {
   test("the last current view's context, attached beside the prompt, with no run on submit", async ($, on) => {

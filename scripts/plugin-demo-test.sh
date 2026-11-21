@@ -6,8 +6,15 @@
 # packages/plugin-demo-tests, laid out as the demo is (its files under hooks/). `claude plugin test <dir>` runs every
 # *.test.ts and *.test.tsx under <dir> against the plugin <dir> holds, so this script has scripts/plugin-demo.sh
 # assemble the demo into a new folder inside a temporary one (it keeps no list of its own of what the demo holds) and
-# validate it strictly (the demo's type-check, under the `claude` on PATH), checks the kit, copies the kit in, and runs
-# it there with `claude` on PATH.
+# validate it strictly (the demo's type-check, under the `claude` on PATH), checks the kit, copies the kit in, validates
+# that folder strictly once more, and runs the kit there with `claude` on PATH.
+#
+# The second validation is the kit's type-check: `claude plugin validate <folder> --strict`, on a folder that holds the
+# demo and its kit, reports a type error in a test file of the kit as a warning, and --strict fails on a warning.
+# scripts/plugin-strict-control.sh is its control: it fails unless the validator refuses a type error written into a
+# test file of a copy of the plugin's kit. The validator type-checks the .ts and .tsx files under hooks/, types/ and
+# tests/ (their subfolders included) and any module those import from elsewhere; a test file in any other folder of the
+# tree, or at its root, is not type-checked, and `claude plugin test` runs it all the same.
 #
 # It refuses a kit that holds a symbolic link anywhere (to a file, to a folder, or to nothing): `claude plugin test`
 # runs regular files only, so a linked test file would be copied and never run, and a link elsewhere would be copied
@@ -16,9 +23,16 @@
 # that would replace an assembled one: a kit entry that is not a folder (a file or a link, a dangling link included) is
 # refused where the assembled demo holds anything at its path; a kit folder is refused where the demo holds a file or
 # a link there, and merges into a folder of the demo. The links are refused beside that check, once the demo is
-# assembled, so a link that would also replace an entry is named on both lines. A refusal (no `claude` on PATH, no
-# kit, no test file, a demo that does not assemble or validate, a link, an entry that would replace one) exits 1
-# before the kit is copied or run. The temporary folder is removed on exit. Otherwise its exit status is the kit's.
+# assembled, so a link that would also replace an entry is named on both lines. Before the demo is assembled, it
+# refuses a test file outside the kit's hooks/ folder (a regular file named *.test.ts or *.test.tsx anywhere else in
+# the kit, its root included, its name read whole): the kit's test files live under hooks/, where the validator
+# type-checks them, and elsewhere a test file can run without its type-check. The rule is the kit's layout, hooks/,
+# not the validator's whole read set, so a test file under tests/ is refused too. A test file at any depth under
+# hooks/, and a file that is not a test file wherever it is, are not refused. A refusal exits 1 before the kit runs: no
+# `claude` on PATH, no kit, no test file, a test file outside hooks/, a demo that does not assemble or validate, a link
+# or an entry that would replace one, before the kit is copied; and, once it is copied, a demo with its kit that does
+# not validate strictly, whatever the validator's status (its report is printed on stderr). The temporary folder is
+# removed on exit. Otherwise its exit status is the kit's.
 set -euo pipefail
 # A shell that exports CDPATH makes `cd` look there first and print where it went: every `cd` below means the name given.
 unset CDPATH
@@ -36,6 +50,10 @@ command -v claude >/dev/null 2>&1 || refuse "claude is not on PATH: the kit runs
 # One NUL per entry, and the NULs counted: a name that holds a newline is one file, not two.
 tests=$(cd "$kit" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | LC_ALL=C tr -dc '\0' | wc -c | tr -d ' ')
 [ "$tests" -gt 0 ] || refuse "no test file under $kit"
+# The test files outside the kit's hooks/ folder, its root included, their names read whole (NUL-separated): `-prune`
+# keeps `find` out of ./hooks, so a test file at any depth under it is not listed.
+outside=$(cd "$kit" && find . -path ./hooks -prune -o -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | while IFS= read -r -d '' f; do echo "$f"; done)
+[ -z "$outside" ] || refuse "kit test files outside the kit's hooks/ folder (the kit's test files live under hooks/, where claude plugin validate type-checks them; elsewhere claude plugin test can run a test file without its type-check; put them under hooks/): $outside"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -60,6 +78,15 @@ clash=$(cd "$kit" && {
 [ -z "$clash" ] || echo "plugin-demo-test: kit entries that would replace entries of the assembled demo: $clash" >&2
 [ -z "$links$clash" ] || exit 1
 cp -R "$kit/." "$demo/"
+
+# The demo with its kit, validated strictly before the kit runs: that is the kit's type-check. $demo is the absolute
+# folder scripts/plugin-demo.sh printed, so claude never reads it as an option. The validator writes its report on
+# stdout; both streams are kept, and shown only when the validation fails, whatever its status.
+if ! report=$(claude plugin validate "$demo" --strict 2>&1); then
+  printf '%s\n' "$report" >&2
+  refuse "the demo with its kit does not validate strictly (claude plugin validate --strict on the folder that holds both, the report above), so no test was run"
+fi
+echo "plugin-demo-test: the demo with its kit validated (strictly: the kit's type-check)" >&2
 
 echo "plugin-demo-test: $tests test files from packages/plugin-demo-tests against the demo assembled by scripts/plugin-demo.sh" >&2
 claude plugin test "$demo"
