@@ -10,7 +10,9 @@
 # The validation is the kit's type-check: `claude plugin validate <folder> --strict`, on a folder that holds the plugin
 # and its kit, reports a type error in a test file or a helper of the kit as a warning, and --strict fails on a
 # warning. scripts/plugin-strict-control.sh is its control: it fails unless the validator refuses a type error written
-# into a test file of a copy of the kit.
+# into a test file of a copy of the kit. The validator type-checks the .ts and .tsx files under hooks/, types/ and
+# tests/ (their subfolders included) and any module those import from elsewhere; a test file in any other folder of
+# the tree, or at its root, is not type-checked, and `claude plugin test` runs it all the same.
 #
 # Before anything is copied or run, it refuses a kit that holds a symbolic link anywhere (to a file, to a folder, or to
 # nothing): `claude plugin test` runs regular files only, so a linked test file would be copied and never run, and a
@@ -19,12 +21,13 @@
 # once). It refuses, too, a kit entry that would replace an entry of the plugin: a kit entry that is not a folder (a
 # file or a link, a dangling link included) is refused where the plugin holds anything at its path; a kit folder is
 # refused where the plugin holds a file or a link there, and merges into a folder of the plugin. A link that would
-# also replace an entry is named on both lines. It refuses, beside those, a test file directly at the kit's root (a
-# regular file named *.test.ts or *.test.tsx there, its name read whole): `claude plugin test` runs it, and
-# `claude plugin validate` reads the .ts and .tsx files in every folder of the tree but none at its root, so it would
-# run without its type-check. A test file in a folder of the kit, and a file at the root that is not a test file, are
-# not refused. A refusal exits 1 before the kit runs: no `claude` on PATH, no plugin, no kit, a link, an entry that
-# would replace one, a test file at the kit's root or no test file, before anything is copied or run; and, once the
+# also replace an entry is named on both lines. It refuses, beside those, a test file outside the kit's hooks/ folder
+# (a regular file named *.test.ts or *.test.tsx anywhere else in the kit, its root included, its name read whole): the
+# kit's test files live under hooks/, where the validator type-checks them, and elsewhere a test file can run
+# without its type-check. The rule is the kit's layout, hooks/, not the validator's whole read set, so a test file
+# under tests/ is refused too. A test file at any depth under hooks/, and a file that is not a test file wherever it
+# is, are not refused. A refusal exits 1 before the kit runs: no `claude` on PATH, no plugin, no kit, a link, an entry
+# that would replace one, a test file outside hooks/ or no test file, before anything is copied or run; and, once the
 # two are copied, a plugin with its kit that does not validate strictly, whatever the validator's status (its report
 # is printed on stderr). The temporary folder is removed on exit. Otherwise its exit status is the kit's.
 set -euo pipefail
@@ -54,12 +57,13 @@ clash=$(cd "$kit" && {
     if [ -L "$plugin/$f" ] || { [ -e "$plugin/$f" ] && [ ! -d "$plugin/$f" ]; }; then echo "$f/"; fi
   done
 })
-# The test files directly at the kit's root, their names read whole (NUL-separated): the validator reads no file there.
-atroot=$(cd "$kit" && find . -mindepth 1 -maxdepth 1 -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | while IFS= read -r -d '' f; do echo "$f"; done)
+# The test files outside the kit's hooks/ folder, its root included, their names read whole (NUL-separated): `-prune`
+# keeps `find` out of ./hooks, so a test file at any depth under it is not listed.
+outside=$(cd "$kit" && find . -path ./hooks -prune -o -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | while IFS= read -r -d '' f; do echo "$f"; done)
 [ -z "$links" ] || echo "plugin-test: kit entries that are symbolic links (claude plugin test runs regular files only, so a linked test file would be copied and never run): $links" >&2
 [ -z "$clash" ] || echo "plugin-test: kit entries that would replace entries of the plugin: $clash" >&2
-[ -z "$atroot" ] || echo "plugin-test: kit test files at the kit's root (claude plugin test would run them, and claude plugin validate reads no file at the root, so they would run without their type-check; put them in a folder of the kit): $atroot" >&2
-[ -z "$links$clash$atroot" ] || exit 1
+[ -z "$outside" ] || echo "plugin-test: kit test files outside the kit's hooks/ folder (the kit's test files live under hooks/, where claude plugin validate type-checks them; elsewhere claude plugin test can run a test file without its type-check; put them under hooks/): $outside" >&2
+[ -z "$links$clash$outside" ] || exit 1
 
 # One NUL per entry, and the NULs counted: a name that holds a newline is one file, not two.
 tests=$(cd "$kit" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | LC_ALL=C tr -dc '\0' | wc -c | tr -d ' ')
