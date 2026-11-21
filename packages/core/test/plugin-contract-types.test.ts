@@ -21,7 +21,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
 const CONTRACT = readFileSync(join(ROOT, 'packages/plugin/types/index.d.ts'), 'utf8');
 
-describe("the plugin's type contract, compiled", () => {
+// Each case compiles the contract a few times; under coverage a compilation takes seconds, so the cases are given room.
+describe("the plugin's type contract, compiled", { timeout: 60_000 }, () => {
   const bases: string[] = [];
   afterAll(() => {
     for (const b of bases) rmSync(b, { recursive: true, force: true });
@@ -45,6 +46,8 @@ describe("the plugin's type contract, compiled", () => {
       strict: true,
       skipLibCheck: false,
       types: [],
+      // The language's own library and no DOM: the contract uses neither, and the DOM library is most of a compilation's time.
+      lib: ['lib.es2022.d.ts'],
       module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
       target: ts.ScriptTarget.ES2022,
