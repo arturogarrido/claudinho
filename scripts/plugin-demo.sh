@@ -14,6 +14,13 @@
 # earlier copy of this demo) is refused, whatever it holds: nothing of yours is ever replaced, and there is nothing
 # to check about what a folder holds. Its parent must exist.
 #
+# With `claude` on PATH it then validates the assembled demo strictly (`claude plugin validate <folder> --strict`):
+# the validator reports a type error in a hooks module or in what it imports as a warning, and --strict fails on a
+# warning, so that validation is the demo's type-check, under that `claude`. A demo that does not validate is an
+# error: the validator's report is printed on stderr and no folder is printed. With no `claude` on PATH, or with
+# PLUGIN_DEMO_NO_VALIDATE set to a value that is not empty, the demo is assembled and not validated, and the script
+# says so; PLUGIN_DEMO_NO_VALIDATE set to the empty string skips nothing.
+#
 # Then load the folder in a session of the desktop app (the scenes show in the desktop and mobile apps only; the
 # celebration also plays in a terminal's band, as text art):
 # start Claude Code with `--plugin-dir <folder>`, or name the folder in CLAUDE_CODE_PLUGIN_DIRS, and type `/demo`.
@@ -72,9 +79,15 @@ version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/packages/plugin/.cl
 if [ -n "${PLUGIN_DEMO_NO_VALIDATE:-}" ]; then
   echo "plugin-demo: not validated (PLUGIN_DEMO_NO_VALIDATE is set)" >&2
 elif command -v claude >/dev/null 2>&1; then
-  # The folder as an absolute path: a name that starts with a dash is never read by claude as an option.
-  claude plugin validate "$(cd -- "$dest" && pwd)" >/dev/null || { echo "plugin-demo: the assembled demo does not validate (claude plugin validate $dest)" >&2; exit 1; }
-  echo "plugin-demo: validated" >&2
+  # The folder as an absolute path: a name that starts with a dash is never read by claude as an option. The validator
+  # writes its report on stdout, which here carries the folder alone: the report is kept, and shown on stderr only when
+  # the validation fails.
+  if ! report=$(claude plugin validate "$(cd -- "$dest" && pwd)" --strict 2>&1); then
+    printf '%s\n' "$report" >&2
+    echo "plugin-demo: the assembled demo does not validate (claude plugin validate $dest --strict, the report above)" >&2
+    exit 1
+  fi
+  echo "plugin-demo: validated (strictly: the demo's type-check)" >&2
 else
   echo "plugin-demo: claude is not on PATH, so the demo was not validated" >&2
 fi
