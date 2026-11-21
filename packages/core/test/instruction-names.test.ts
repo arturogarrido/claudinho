@@ -77,7 +77,7 @@ function resolvePaths(named: string): string[] {
 const SOURCE_EXT = /\.(ts|tsx|mjs|js|sh|yml|json)$/;
 const SOURCE_FILES = ALL_FILES.filter(
   // `pnpm-workspace.yaml` by name: the one tracked `.yaml` that is a manifest (the lockfile is not source).
-  (f) => (SOURCE_EXT.test(f) || f === 'pnpm-workspace.yaml') && !/(^|\/)(test|fixtures)\//.test(f) && !f.startsWith('packages/plugin-tests/') && !f.includes('/src/data/'),
+  (f) => (SOURCE_EXT.test(f) || f === 'pnpm-workspace.yaml') && !/(^|\/)(test|fixtures)\//.test(f) && !f.startsWith('packages/plugin-tests/') && !f.startsWith('packages/plugin-demo-tests/') && !f.includes('/src/data/'),
 );
 /** A file's code without its comments: a name that survives only in a comment is not a name the code has. */
 const uncommented = (text: string, file: string): string => {
@@ -323,5 +323,14 @@ describe('the one count the release steps act on', () => {
     const agents = read(join(ROOT, 'AGENTS.md'));
     expect(agents).toContain('four jobs (`build`, `publish`, `release`, `mcp-registry`)');
     expect(jobs).toEqual(['build', 'publish', 'release', 'mcp-registry']);
+  });
+});
+
+describe('what counts as source for a name', () => {
+  it('a kit of tests is never source: nothing under the plugin\'s kit or the demo\'s kit is read for names, though both are tracked', () => {
+    for (const kit of ['packages/plugin-tests/', 'packages/plugin-demo-tests/']) {
+      expect(ALL_FILES.filter((f) => f.startsWith(kit)).length, kit).toBeGreaterThan(0);
+      expect(SOURCE_FILES.filter((f) => f.startsWith(kit)), kit).toEqual([]);
+    }
   });
 });

@@ -233,6 +233,8 @@ jobs:
   # The Claude Code plugin (packages/plugin, no package.json and no dependencies): its manifest, the root marketplace
   # file and its hooks module validated, and its tests (packages/plugin-tests, kept out of the folder that installs)
   # run against it by the engine's own kit through scripts/plugin-test.sh, under the pinned Claude Code CLI.
+  # Then the development-only demo (packages/plugin-demo), assembled from this checkout, with its own kit
+  # (packages/plugin-demo-tests) through scripts/plugin-demo-test.sh: its two celebration commands are run, not read.
   # The job's name carries no version, so a pin bump leaves the ruleset's required check as it is.
   plugin:
     name: plugin (validate · test)
@@ -249,3 +251,4 @@ jobs:
           claude plugin validate .
           claude plugin validate packages/plugin
           bash scripts/plugin-test.sh
+          bash scripts/plugin-demo-test.sh

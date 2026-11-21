@@ -6,7 +6,7 @@
  * the plugin on this checkout draws.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,13 +87,35 @@ describe('the plugin demo (development only)', () => {
     expect(src).toContain('resultRow(');
     // It is drawn where the plugin draws it, in the band above the prompt.
     expect(src).toMatch(/on\(\s*'ui\.render'\s*,\s*\{\s*component:\s*'AbovePrompt'\s*\}/);
-    // Its two command words reach the play: the one branch that compares both starts it. This reads the source; that
-    // a command PLAYS in the app is a person's look (the PR's "Seen in the app"), which no test here replaces.
-    expect(src).toMatch(/if \(word === 'mascot' \|\| word === 'fulltime'\) \{[^}]*?\bawait startPlay\(\$, word\)/);
+    // That its two commands PLAY is not read from the source: the demo's kit runs them (next case).
     for (const word of ['mascot', 'fulltime']) expect(read('packages/plugin-demo/README.md'), word).toContain(`\`/demo ${word}\``);
     // The command list of AGENTS.md says the demo shows it.
     const bullet = /- `bash scripts\/plugin-demo\.sh`[^\n]*/.exec(read('AGENTS.md'))?.[0] ?? '';
     expect(bullet).toMatch(/celebration/);
+  });
+
+  it('the demo has a kit that runs it: tests kept out of the demo\'s folder, run against the assembled demo by a script CI runs', () => {
+    // packages/plugin-demo-tests, laid out as the demo is: `scripts/plugin-demo-test.sh` assembles the demo with
+    // `scripts/plugin-demo.sh` and runs these against it under `claude plugin test`. They run `/demo mascot` and
+    // `/demo fulltime`; the scenes a command sets are not looked at there.
+    const kit = tracked('packages/plugin-demo-tests');
+    expect(kit.filter((f) => /\.test\.tsx?$/.test(f)).length).toBeGreaterThan(0);
+    // No kit file takes the place of a file the assembled demo holds: the demo's own, or a plugin module copied in.
+    const taken = new Set([...tracked('packages/plugin-demo'), ...copies().map((f) => `hooks/${f}`)]);
+    expect(kit.filter((f) => taken.has(f))).toEqual([]);
+    const kitText = read('packages/plugin-demo-tests/hooks/demo.test.tsx');
+    for (const word of ['mascot', 'fulltime', 'off']) expect(kitText, word).toContain(`run('${word}')`);
+    // The script: it assembles through the demo's own script (never a copy list of its own) and runs the kit. That it
+    // refuses a kit file that would replace an assembled one, and that its status is the kit's, is not read here.
+    const script = read('scripts/plugin-demo-test.sh');
+    expect(script).toMatch(/^set -euo pipefail\r?$/m);
+    expect(script).toMatch(/plugin-demo\.sh/);
+    expect(script).not.toMatch(/\bcopies=/);
+    expect(script).toMatch(/packages\/plugin-demo-tests|plugin-demo-tests/);
+    expect(script).toMatch(/^\s*claude plugin test\b/m);
+    // CI's plugin job runs it after the plugin's own kit.
+    expect(read('.github/workflows/ci.yml')).toMatch(/bash scripts\/plugin-test\.sh\r?\n\s+bash scripts\/plugin-demo-test\.sh\r?\n/);
+    expect(read('AGENTS.md')).toContain('`bash scripts/plugin-demo-test.sh`');
   });
 
   it('the demo draws with the plugin\'s functions: the scenes, the look and the colors are imported, never written here', () => {
@@ -128,7 +150,7 @@ describe('the plugin demo (development only)', () => {
     expect(bullet).toContain('"Seen in the app"');
     expect(bullet).toMatch(/a skipped look is\s+not a pass/);
     // The rule's row in the table, and the feature playbook's step.
-    expect(agents).toMatch(/\| A plugin drawing merged without being seen in the app \| `plugin-demo\.test\.ts` \(core\), `scripts\/plugin-demo\.sh` \|/);
+    expect(agents).toMatch(/\| A plugin drawing merged without being seen in the app \| `plugin-demo\.test\.ts` \(core\), `scripts\/plugin-demo\.sh`, `scripts\/plugin-demo-test\.sh` \|/);
     const playbook = read('.claude/skills/claudinho-mode/playbooks/feature.md');
     expect(playbook).toContain('`bash scripts/plugin-demo.sh`');
     expect(playbook).toContain('"Seen in the app"');
@@ -295,5 +317,77 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
     expect(bad.status).toBe(1);
     expect(bad.stdout).toBe('');
     expect(bad.stderr).toContain('does not validate');
+  });
+});
+
+// The demo's kit runner, run in a copy of the folders it reads, with a fake `claude` on PATH that records the
+// folder it was handed and exits as told: what the script refuses, what it hands the kit, its status and its cleanup.
+// The kit's own cases run under the real `claude` in CI's plugin job, never here.
+describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run', () => {
+  /** A root holding the two scripts, the plugin, the demo and the demo's kit; a `bin` with the fake; a log. */
+  const stage = () => {
+    const base = mkdtempSync(join(tmpdir(), 'plugin-demo-test-'));
+    const root = join(base, 'root');
+    for (const dir of ['scripts', 'packages/plugin', 'packages/plugin-demo', 'packages/plugin-demo-tests']) mkdirSync(join(root, dir), { recursive: true });
+    for (const f of ['scripts/plugin-demo.sh', 'scripts/plugin-demo-test.sh']) cpSync(join(ROOT, f), join(root, f));
+    for (const dir of ['packages/plugin', 'packages/plugin-demo', 'packages/plugin-demo-tests']) for (const f of tracked(dir)) cpSync(join(ROOT, dir, f), join(root, dir, f), { recursive: true });
+    const bin = join(base, 'bin');
+    mkdirSync(bin);
+    const log = join(base, 'claude.log');
+    // `claude plugin validate <dir>` passes; `claude plugin test <dir>` logs the folder and its files, exits $STUB_EXIT.
+    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin test" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 0\n`);
+    chmodSync(join(bin, 'claude'), 0o755);
+    const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-demo-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
+    const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
+    return { root, run, seen, kit: join(root, 'packages/plugin-demo-tests') };
+  };
+
+  it('hands the kit the assembled demo with the kit\'s files in it, exits as the kit does, and removes its folder', () => {
+    const s = stage();
+    const ok = s.run();
+    expect(ok.status, ok.stderr).toBe(0);
+    const lines = s.seen();
+    const dir = (lines[0] ?? '').replace(/^DIR /, '');
+    expect(lines.slice(1)).toEqual(['./.claude-plugin/plugin.json', './hooks/demo.test.tsx', './hooks/hooks.json', './hooks/register.tsx', ...copies().map((f) => `./hooks/${f}`)].sort());
+    expect(dir).not.toBe('');
+    expect(existsSync(dir)).toBe(false);
+    // A failing kit: its status is the script's, and the folder is removed all the same.
+    const failed = s.run({ STUB_EXIT: '7' });
+    expect(failed.status).toBe(7);
+    const second = (s.seen().filter((l) => l.startsWith('DIR '))[1] ?? '').replace(/^DIR /, '');
+    expect(second).not.toBe('');
+    expect(second).not.toBe(dir);
+    expect(existsSync(second)).toBe(false);
+  });
+
+  it('refuses a kit entry that would replace a file of the assembled demo, a link or a folder as much as a file, before any test runs', () => {
+    for (const make of [
+      (kit: string) => writeFileSync(join(kit, 'hooks/register.tsx'), 'export const register = () => {}\n'),
+      (kit: string) => symlinkSync(join(kit, 'hooks/demo.test.tsx'), join(kit, 'hooks/register.tsx')),
+      (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/celebration.tsx')),
+      // A kit folder where the assembled demo holds a file.
+      (kit: string) => mkdirSync(join(kit, 'hooks/register.tsx')),
+    ]) {
+      const s = stage();
+      make(s.kit);
+      const r = s.run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/replace/);
+      expect(s.seen()).toEqual([]);
+    }
+  });
+
+  it('refuses a kit with no test file, and a PATH with no claude, before anything runs', () => {
+    const empty = stage();
+    rmSync(join(empty.kit, 'hooks/demo.test.tsx'));
+    writeFileSync(join(empty.kit, 'hooks/helper.ts'), 'export const x = 1\n');
+    const none = empty.run();
+    expect(none.status).toBe(1);
+    expect(none.stderr).toMatch(/no test file/);
+    expect(empty.seen()).toEqual([]);
+    const s = stage();
+    const off = s.run({}, '/usr/bin:/bin');
+    expect(off.status).toBe(1);
+    expect(off.stderr).toMatch(/claude is not on PATH/);
   });
 });

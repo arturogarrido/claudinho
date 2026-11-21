@@ -604,7 +604,7 @@ const AUDIT_DECISION = [
 
 /** The plugin job's two steps: the pinned Claude Code CLI, and its own validate and test, which the gate cannot run. */
 export const PLUGIN_INSTALL = 'npm install -g @anthropic-ai/claude-code@2.1.325';
-export const PLUGIN_CHECKS = 'claude plugin validate .\nclaude plugin validate packages/plugin\nbash scripts/plugin-test.sh';
+export const PLUGIN_CHECKS = 'claude plugin validate .\nclaude plugin validate packages/plugin\nbash scripts/plugin-test.sh\nbash scripts/plugin-demo-test.sh';
 /** The exclusions, each with its reason; every other gating command must be a gate step. */
 const EXCLUDED: Array<{ match: (s: Step) => boolean; reason: string }> = [
   { match: (s) => s.kind === 'run' && s.job === 'plugin' && s.text === PLUGIN_INSTALL, reason: 'the plugin job installs the pinned Claude Code CLI, which the gate does not have' },
