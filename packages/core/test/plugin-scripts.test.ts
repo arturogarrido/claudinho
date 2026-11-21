@@ -102,6 +102,25 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(s.validatedFiles()).toContain('./hooks/register.tsx');
   });
 
+  it('refuses a test file at the kit\'s root: the engine would run it, and the validator reads no file there, so it would run without its type-check', () => {
+    for (const name of ['extra.test.tsx', 'extra.test.ts']) {
+      const s = stage();
+      writeFileSync(join(s.kit, name), 'export const bad: number = 1\n');
+      const r = s.run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/root/);
+      expect(r.stderr).toContain(name);
+      expect(s.seen()).toEqual([]);
+      expect(s.validated()).toEqual([]);
+    }
+    // A helper at the root is not a test file, and a test file in any folder is read: neither is refused.
+    const s = stage();
+    writeFileSync(join(s.kit, 'helper.ts'), 'export const x = 1\n');
+    mkdirSync(join(s.kit, 'more'));
+    writeFileSync(join(s.kit, 'more/extra.test.tsx'), 'export const x = 1\n');
+    expect(s.run().status).toBe(0);
+  });
+
   it('a kit whose only test file ends in .test.ts is a kit: counted, validated and run', () => {
     const s = stage();
     for (const f of tracked('packages/plugin-tests').filter((x) => /\.test\.tsx?$/.test(x))) rmSync(join(s.kit, f));
