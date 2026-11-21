@@ -348,7 +348,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
     expect(ok.status, ok.stderr).toBe(0);
     const lines = s.seen();
     const dir = (lines[0] ?? '').replace(/^DIR /, '');
-    expect(lines.slice(1)).toEqual(['./.claude-plugin/plugin.json', './hooks/demo.test.tsx', './hooks/hooks.json', './hooks/register.tsx', ...copies().map((f) => `./hooks/${f}`)].sort());
+    expect(lines.slice(1).sort()).toEqual(['./.claude-plugin/plugin.json', './hooks/demo.test.tsx', './hooks/hooks.json', './hooks/register.tsx', ...copies().map((f) => `./hooks/${f}`)].sort());
     expect(dir).not.toBe('');
     expect(existsSync(dir)).toBe(false);
     // A failing kit: its status is the script's, and the folder is removed all the same.

@@ -55,7 +55,8 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () 
     expect(ok.status, ok.stderr).toBe(0);
     const lines = s.seen();
     const dir = (lines[0] ?? '').replace(/^DIR /, '');
-    expect(lines.slice(1)).toEqual([...tracked('packages/plugin'), ...tracked('packages/plugin-tests')].map((f) => `./${f}`).sort());
+    // Both lists sorted here: the shell's `sort` orders by the runner's locale.
+    expect(lines.slice(1).sort()).toEqual([...tracked('packages/plugin'), ...tracked('packages/plugin-tests')].map((f) => `./${f}`).sort());
     expect(dir).not.toBe('');
     expect(existsSync(dir)).toBe(false);
     // A failing kit: its status is the script's, and the folder is removed all the same.
