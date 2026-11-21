@@ -1,8 +1,12 @@
-import { mock, type test } from 'claude-code/testing'
+import { mock, type TestBody } from 'claude-code/testing'
 
 /** The world beneath the plugin, shared by the test files (a helper module: a test file imported by another would run its tests again). */
 export const START = { cwd: '/tmp/claudinho-test', surface: 'terminal', isInteractive: true } as const
-export const PROPS = { hasSurvey: false, isWorking: false, maxRows: 5, bodyColumns: 80 } as const
+/** The band's props as the engine hands them to an `AbovePrompt` hook; a test changes the four the plugin reads. */
+export type BandProps = { hasSurvey: boolean; isWorking: boolean; maxRows: number; bodyColumns: number }
+export const PROPS: BandProps = { hasSurvey: false, isWorking: false, maxRows: 5, bodyColumns: 80 }
+/** The props the plugin does not read, as the engine gives them at rest: not collapsed, at the top, the main conversation in view. */
+const REST = { isCollapsed: false, scroll: { offset: 0, bodyRows: 30 }, view: {} }
 const ok = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 /** The clock's start: the views the tests build are stamped 15:00Z with a 15:05Z deadline. */
 export const NOW = Date.parse('2026-10-10T15:00:00.000Z')
@@ -52,7 +56,7 @@ type Surface = 'terminal' | 'desktop' | 'mobile' | 'vscode'
  */
 export type WorldOptions = {
   start?: { surface: Surface | null; isInteractive: boolean }
-  surfaces?: Surface[]
+  surfaces?: readonly Surface[]
   attachFirst?: { surface: Surface; clientId: string }
   env?: Record<string, string>
   nvm?: Array<{ name: string; kind: 'file' | 'dir' | 'other' }> | Error | 'hold'
@@ -77,8 +81,8 @@ export const held = (stdout: string) => ({ held: stdout }) as const
 
 /** The world beneath the plugin: a mock clock, the session started, the engine's own (empty) band, the CLI's answers in order. */
 export const world = async (
-  $: Parameters<Parameters<typeof test>[1]>[0],
-  on: Parameters<Parameters<typeof test>[1]>[1],
+  $: Parameters<TestBody>[0],
+  on: Parameters<TestBody>[1],
   answers: Answer[],
   options: WorldOptions = {},
 ) => {
@@ -232,8 +236,8 @@ export const world = async (
   const denyRoster = (deny: boolean) => {
     rosterRejects = deny
   }
-  const mount = (props: Partial<typeof PROPS> = {}, surface: 'terminal' | 'desktop' = 'terminal') =>
-    $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
+  const mount = (props: Partial<BandProps> = {}, surface: 'terminal' | 'desktop' = 'terminal') =>
+    $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...REST, ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   /** The person runs `/claudinho` (with `args` typed after it) at the composer, as the engine raises it; resolves to its reply. */
   const command = (args = '') =>
     $.command.run({ command: 'claudinho', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
@@ -372,7 +376,7 @@ export const momentView = (items: Array<Record<string, unknown>>, finished: Arra
 /** Ronald Araújo's goal for Liverpool at 22', proven by the CLI (`lastGoal`). */
 export const ARAUJO = { type: 'GOAL', minute: 22, side: 'away', teamCode: 'LIV', player: 'Ronald Araújo' } as const
 /** The toasts the plugin raised with how long each stays (`timeoutMs`, undefined: the engine's default). */
-export const toastsWithTimeout = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+export const toastsWithTimeout = (on: Parameters<TestBody>[1]) => {
   const raised: Array<{ text: string; timeoutMs: number | undefined }> = []
   on('ui.toast', (_$, e) => {
     raised.push({ text: e.text, timeoutMs: e.timeoutMs })
@@ -381,7 +385,7 @@ export const toastsWithTimeout = (on: Parameters<Parameters<typeof test>[1]>[1])
   return raised
 }
 /** The toasts the plugin raised, as the engine's bottom receives them. */
-export const toastTexts = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+export const toastTexts = (on: Parameters<TestBody>[1]) => {
   const texts: string[] = []
   on('ui.toast', (_$, e) => {
     texts.push(e.text)

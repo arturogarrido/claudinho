@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, mock, test, type TestBody } from 'claude-code/testing'
 
 /**
  * The plugin demo's celebration, RUN: `scripts/plugin-demo-test.sh` assembles the demo as `scripts/plugin-demo.sh`
@@ -49,8 +49,8 @@ const POSES = LEGS.map((legs) => sourceOf([HEAD, BODY, legs]))
 const GOAL_LINE = "⚽ ESP 1–0 ARG 36'  · demo"
 const FT_LINE = '⚽ ESP 1–0 ARG FT  · demo'
 
-type On = Parameters<Parameters<typeof test>[2]>[1]
-type Engine = Parameters<Parameters<typeof test>[2]>[0]
+type On = Parameters<TestBody>[1]
+type Engine = Parameters<TestBody>[0]
 type Surface = 'terminal' | 'desktop'
 
 type Tree = { type: string; props?: Record<string, unknown>; children?: Array<Tree | string> }
@@ -111,10 +111,10 @@ const session = async ($: Engine, on: On) => {
   })
   on('theme.clear', () => {
     asked.clears += 1
-    return { value: undefined }
+    return { value: { isDrawn: false, reason: 'cleared' } }
   })
   // A team word sets its stadium as the look: the engine's answer, a look that is drawn.
-  on('theme.set', () => ({ value: { isDrawn: true } }))
+  on('theme.set', () => ({ value: { isDrawn: true, requestId: 'theme' } }))
   on('ui.render', { component: 'AbovePrompt' }, ($$, e) => {
     const { Text } = $$.ui.resolve(e)
     return <Text>beneath</Text>

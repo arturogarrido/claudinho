@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, test, type TestBody } from 'claude-code/testing'
 import { NATION_IDS, TEAM_COLORS } from './team-colors'
 import { bandColor, bandSvg, buildLook, colorsForPick } from './team-look'
 import { FIRST_RUN, START, view, world } from './world'
@@ -34,7 +34,7 @@ const saidTeam = (name: string) => `Team look: ${name}.`
 const SAID_PITCH_NO_PIN = 'Team look: pitch green (no team pinned: claudinho follow <competition> --team <name> pins one).'
 const saidPitchFor = (name: string) => `Team look: pitch green (no colors known for ${name}).`
 
-type On = Parameters<Parameters<typeof test>[1]>[1]
+type On = Parameters<TestBody>[1]
 /** The engine beneath the plugin: every theme the plugin sets and every clear, as the engine receives them. */
 const themes = (on: On, answer: 'drawn' | 'not-drawn' | 'deny' | 'deny-clear' = 'drawn') => {
   const sets: unknown[] = []
@@ -418,7 +418,7 @@ describe('/claudinho theme: what the first round of review found', () => {
 })
 
 describe('the band behind the conversation', () => {
-  const backdrop = ($: Parameters<Parameters<typeof test>[1]>[0], scene: string, plugin = 'claudinho', surface: 'desktop' | 'mobile' = 'desktop') =>
+  const backdrop = ($: Parameters<TestBody>[0], scene: string, plugin = 'claudinho', surface: 'desktop' | 'mobile' = 'desktop') =>
     $.ui.mount({ plugin, surface, component: 'Backdrop', props: { scene, plugin, glass: { blur: 28, opacity: 0.5 } }, viewport: { columns: 100, rows: 30 } } as Parameters<typeof $.ui.mount>[0])
 
   test('our scene is drawn as one Svg, its source the band of the colors the scene names, with a description', ON, async ($, on) => {

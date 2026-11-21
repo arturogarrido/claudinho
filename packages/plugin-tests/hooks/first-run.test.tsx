@@ -234,7 +234,7 @@ describe('a CLI that works: nothing said', () => {
     const toasts = toastsWithTimeout(on)
     const w = await world($, on, [view(LINE)])
     expect(toasts).toEqual([])
-    expect((await w.command()).text.startsWith(LINE)).toBe(true)
+    expect((await w.command())?.text?.startsWith(LINE)).toBe(true)
   })
 
   test('`api: 1`: no toast', async ($, on) => {

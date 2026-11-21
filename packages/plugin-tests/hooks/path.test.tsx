@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, test, type TestBody } from 'claude-code/testing'
 import { BARE_PATH, HOME, NVM, view, world } from './world'
 
 /**
@@ -118,7 +118,7 @@ const REFUSED_SLEEP = {
   plugins: [
     {
       name: 'refuse-sleep',
-      register(on: Parameters<Parameters<typeof test>[1]>[1]) {
+      register(on: Parameters<TestBody>[1]) {
         on('clock.sleep', () => ({ deny: 'clock.sleep refused' }))
       },
     },
