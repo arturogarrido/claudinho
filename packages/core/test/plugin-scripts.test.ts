@@ -11,7 +11,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rm
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -27,9 +27,15 @@ const put = (file: string, text: string) => {
 };
 
 describe.skipIf(process.platform === 'win32')('scripts/plugin-test.sh, run', () => {
+  /** Every folder a case staged, removed when the cases are done. */
+  const bases: string[] = [];
+  afterAll(() => {
+    for (const b of bases) rmSync(b, { recursive: true, force: true });
+  });
   /** A root holding the script, the plugin and its kit; a `bin` with the fake `claude`; its log. */
   const stage = () => {
     const base = mkdtempSync(join(tmpdir(), 'plugin-test-'));
+    bases.push(base);
     const root = join(base, 'root');
     mkdirSync(join(root, 'scripts'), { recursive: true });
     cpSync(join(ROOT, 'scripts/plugin-test.sh'), join(root, 'scripts/plugin-test.sh'));

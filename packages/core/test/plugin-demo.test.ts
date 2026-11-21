@@ -10,7 +10,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -333,9 +333,15 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
 // folder it was handed and exits as told: what the script refuses, what it hands the kit, its status and its cleanup.
 // The kit's own cases run under the real `claude` in CI's plugin job, never here.
 describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run', () => {
+  /** Every folder a case staged, removed when the cases are done. */
+  const bases: string[] = [];
+  afterAll(() => {
+    for (const b of bases) rmSync(b, { recursive: true, force: true });
+  });
   /** A root holding the two scripts, the plugin, the demo and the demo's kit; a `bin` with the fake; a log. */
   const stage = () => {
     const base = mkdtempSync(join(tmpdir(), 'plugin-demo-test-'));
+    bases.push(base);
     const root = join(base, 'root');
     for (const dir of ['scripts', 'packages/plugin', 'packages/plugin-demo', 'packages/plugin-demo-tests']) mkdirSync(join(root, dir), { recursive: true });
     for (const f of ['scripts/plugin-demo.sh', 'scripts/plugin-demo-test.sh']) cpSync(join(ROOT, f), join(root, f));
