@@ -460,9 +460,10 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run'
   });
 
   it('refuses a test file outside the kit\'s hooks folder: the engine would run it, and the validator type-checks no test file there, so it would run without its type-check', () => {
-    // At the root, and in folders the validator was measured not to read (`more`, `test`, `lib`) or to read (`tests`):
-    // one rule, the kit's layout, whatever the validator reads beyond it.
-    for (const name of ['extra.test.tsx', 'extra.test.ts', 'more/extra.test.tsx', 'test/probe.test.ts', 'lib/deep/er/x.test.tsx', 'tests/x.test.ts', 'hooks2/x.test.tsx']) {
+    // At the root, and in folders the validator was measured not to read (`more`, `test`, `lib`, a `hooks` folder that
+    // is not the kit's own top-level one) or to read (`tests`): one rule, the kit's layout, whatever the validator
+    // reads beyond it.
+    for (const name of ['extra.test.tsx', 'extra.test.ts', 'more/extra.test.tsx', 'test/probe.test.ts', 'lib/deep/er/x.test.tsx', 'tests/x.test.ts', 'hooks2/x.test.tsx', 'lib/hooks/x.test.ts']) {
       const s = stage();
       mkdirSync(dirname(join(s.kit, name)), { recursive: true });
       writeFileSync(join(s.kit, name), 'export const bad: number = 1\n');
