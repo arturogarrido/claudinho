@@ -140,7 +140,8 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-typecheck.sh, run'
     // The engine's own layout: a folder holding claude-code/index.d.ts.
     const folder = join(base, 'types');
     put(join(folder, 'claude-code/index.d.ts'), DECLARATIONS);
-    const run = (args: string[], path = `${TSC_BIN}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-typecheck.sh'), ...args], { encoding: 'utf8', timeout: 120_000, env: { ...process.env, PATH: path } });
+    // The compiler's launcher runs `node`: this process's own is on the PATH beside it.
+    const run = (args: string[], path = `${TSC_BIN}:${dirname(process.execPath)}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-typecheck.sh'), ...args], { encoding: 'utf8', timeout: 120_000, env: { ...process.env, PATH: path } });
     return { root, run, file, folder };
   };
   const out = (r: { stdout: string; stderr: string }) => `${r.stdout}\n${r.stderr}`;
