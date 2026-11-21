@@ -1,5 +1,8 @@
 {
   "name": "claudinho-demo",
   "version": "0.1.0",
-  "description": "Development only: shows the Claudinho plugin's own drawings in the Claude desktop app on a /demo command, with no match needed. Assembled by scripts/plugin-demo.sh; never installed with the plugin."
+  "description": "Development only: shows the Claudinho plugin's own drawings in the Claude desktop app on a /demo command, with no match needed. Assembled by scripts/plugin-demo.sh; never installed with the plugin.",
+  "author": {
+    "name": "Arturo Garrido"
+  }
 }
