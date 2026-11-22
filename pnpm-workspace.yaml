@@ -58,12 +58,3 @@ verifyDepsBeforeRun: false
 # cover pnpm's own version (`packageManager`): Corepack switched to a 6-day-old
 # pnpm with this set.
 minimumReleaseAge: 10080
-
-# Security fixes younger than 7 days, adopted on Nov 14, 2026 (remove each once
-# its version is 7 days old, on Nov 18, 2026):
-# hono 4.13.18 (Nov 11): GHSA-74fm-fwc7-3fwp, GHSA-39q9-qp46-w8xg,
-# GHSA-92p4-j3wq-jmqx, GHSA-h25j-2p75-qj33.
-# @hono/node-server 2.1.7 (Nov 11): GHSA-fj57-4f93-cfw6.
-minimumReleaseAgeExclude:
-  - hono@4.13.18
-  - '@hono/node-server@2.1.7'
