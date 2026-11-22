@@ -4,7 +4,7 @@ import { ARAUJO, finishedRecord, liveRecord, momentLine, momentView, world } fro
 /**
  * The celebration's WHOLE tree, on the terminal: every element and every prop a mount shows of what the plugin hands
  * the engine, compared with one written here (a Box's key is among its props; a Text's key is not shown, so the rows'
- * `row-1` and `goal-word` keys are not compared). mascot.test.tsx and mascot-desktop.test.tsx read texts, a colour and the Svg's
+ * `row-1` and `goal-word` keys are compared in celebration-keys.test.tsx). mascot.test.tsx and mascot-desktop.test.tsx read texts, a colour and the Svg's
  * source; a row's `wrap`, the words column's padding or a `bold` on full time's caption could change under them.
  *
  * Two more rules of the drawing, which `packages/plugin/hooks/celebration.tsx` states and a source check cannot hold:
