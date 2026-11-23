@@ -144,9 +144,7 @@ Claude Code 2.1.324 or later: the terminal and VS Code draw nothing, and in a te
 app showed neither its colors nor its scene. The look is set from the plugin's readings (the band's, or a
 `/claudinho` you type) while the desktop app is attached, once per team, and again only when your team changes or the
 plugin reloads (Claude Code drops the look then); with `teamScene: pixel`, also when the stadium's state or its
-scoreboard changes ([The scenes](#the-scenes)). A session with only the mobile app attached sets no look, and
-`/claudinho theme` there says where the look shows once you follow a competition (with none followed, it gives the
-first-run reply).
+scoreboard changes ([The scenes](#the-scenes)). A session with only the mobile app attached sets no look.
 
 It is off by default because a session holds one theme: turning it on replaces the theme the session had, and the
 plugin does not bring that theme back. The band is colors only, and no scene ever draws a crest or a logo.
@@ -176,10 +174,7 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
   right. While it is open, the app's session list covers the stadium at the left, and its session panel covers it at the right: choose the side whose panel you keep closed. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
   terminal or the desktop app attached, where the band runs. With the phone alone nothing is set, the end of a live
-  stadium included. When the desktop app is back, its readings decide: a fresh reading that still shows your team's
-  match in play keeps the stadium live; one that no longer shows it empties it at once, and a reading that is not
-  fresh empties it once five minutes have passed since the last fresh reading that showed the match live. It has
-  three states:
+  stadium included; when the desktop app is back, the stadium follows its readings again. It has three states:
   - **live**, while your team's match is in play: fans on the terraces and a ball by the goal. One fan holds up a
     scarf: for a national team, in its flag's colors as two or three plain stripes; a club, and the few national teams
     the plugin has no flag for, keep the scarf in the team's two colors. A reading the CLI
@@ -323,8 +318,9 @@ answered:
 
 A reply made from a reading ends with the provider's name and the non-affiliation sentence, each when the reading
 carries it. `/claudinho match` answers in one line only when its pane opened on a terminal or desktop window and
-holds both of those sentences; otherwise it gives the same reply as `/claudinho`. Each `/claudinho` runs the CLI once
-and changes nothing the band shows; `/claudinho theme` followed by any other word runs nothing and answers at once. A `/claudinho` typed while Claude is working runs when the turn ends.
+holds both of those sentences; otherwise it gives the same reply as `/claudinho`. A `/claudinho` runs the CLI once,
+`/claudinho match` once more for the match its pane opens on, and `/claudinho theme` followed by any other word runs
+nothing and answers at once; none of them changes what the band shows. A `/claudinho` typed while Claude is working runs when the turn ends.
 
 ### The match pane, in full
 
