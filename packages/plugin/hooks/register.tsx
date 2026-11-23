@@ -96,7 +96,9 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * it shares the module's memory of the team look with the band: its view may set the look, `theme off` and `theme on`
  * write the session's `lookOff`, and `theme off` may clear the session's theme (below).
  * The text typed after the command is only compared, surrounding spaces aside: `match` opens the match pane; `theme`,
- * `theme off` and `theme on` are the team look's (below); any other text is ignored.
+ * `theme off` and `theme on` are the team look's (below); `theme` followed by a space and any other text is answered at
+ * once, before any run and whatever the option, with the phrases and where the scene is chosen (no view, no footer);
+ * any other text is ignored.
  *
  * The match pane: `/claudinho match` binds, from the command's own reading, a view's competition (its slug) and the
  * first record of its live list (the CLI lists the pick first), else its `next`; nothing to bind, no read and no pane.
@@ -162,9 +164,10 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *
  * The team look (plugin 0.8.0), opt-in (`teamTheme: on`; anything else is off, and then the module never calls
  * `$.theme.set` or `$.theme.clear`): a session holds one theme, and a set replaces the one the person had. After a run
- * (the band's or the command's: a mobile-only session runs no band, so there only a typed `/claudinho` sets it) whose
- * answer is a view, while the person has not turned it off this session and the roster holds the desktop or the
- * mobile app (the two that draw a look), the look of the view's `pick` in its competition (`team-look.ts`: the team's
+ * (the band's or the command's) whose answer is a view, while the person has not turned it off this session and the
+ * roster holds the desktop app (the one that draws a look: in a test on Nov 22, 2026, the Claude mobile app showed
+ * neither its colors nor its scene, so a session with only the phone sets no look, and `/claudinho theme` and
+ * `theme on` there say where it shows), the look of the view's `pick` in its competition (`team-look.ts`: the team's
  * colors for both modes and a scene named for its two colors, pitch green for no pin or no colors known) is set once per look
  * (its key: the team's name and colors, or pitch green for any team with none, so two clubs of one color are two looks
  * and two teams with no colors one): a look already tried is never set again, whatever the set answered (a refusal,
@@ -175,7 +178,8 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * stands (a set the engine did not refuse, drawn or not; else the theme may be the person's own); `/claudinho theme
  * on` lifts the off and sets the look of the command's own view. Every `session.start` forgets the module's memory of
  * the look (a reload's engine dropped the look the old module set), so the next reading sets it again, unless it is off.
- * The look's scene is drawn by the `Backdrop` hook: under `teamTheme: on`, on the desktop or mobile app, for a scene of
+ * The look's scene is drawn by the `Backdrop` hook: under `teamTheme: on`, on the desktop app (the hook answers the
+ * mobile surface too, should the phone ever ask for a scene a desktop app's session set), for a scene of
  * this plugin's whose name is a band's (`bandSvg`), one `Svg` of the band across the top (the main color's half on the
  * left, the second's on the right), made from the two colors in the name alone; anything else is left to what is
  * beneath (`next`). A new pair of colors is a new scene name, so the app draws the band again.
@@ -213,7 +217,7 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   The standing fan's scarf is the pick's flag (plugin 0.10.0: `flagForPick`, carried with the look's colors) when
  *   the pick is a national team with one, else the team's two colors. Live and goal start only
  *   with a surface that draws the band in the roster (there the band's pace runs, and its readings end them): a band
- *   run's reading has one, and a command's asks the roster once; with none (a session with only the mobile app) a
+ *   run's reading has one, and a command's asks the roster once; with none (a session with no band surface) a
  *   reading is idle, its board by the same rule, and starts and refreshes nothing. What the corner remembers (the hold,
  *   the goal, the look its scope last asked a scene in) is ONE record of one scope, the competition and the pick's
  *   identity, and is forgotten one way (`forgetPixel`): by any reading whose view is of another scope (current or not,
@@ -331,7 +335,15 @@ const THEME_OFF_WORDS = 'theme off'
 const THEME_ON_WORDS = 'theme on'
 /** The team look's replies. */
 const REPLY_LOOK_OFF = 'The team look is off. Turn it on in /config (Team look).'
-const REPLY_LOOK_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
+const REPLY_LOOK_NOT_DRAWN = 'The team look shows in the Claude desktop app; nothing draws it in this session.'
+/**
+ * Any other word after `theme` (a scene's name, a misspelt phrase): the phrases and where the scene is chosen, said at
+ * once, before any run, whatever the option (no view was read, so no footer).
+ */
+const REPLY_LOOK_PHRASES =
+  'The theme phrases are /claudinho theme, theme on and theme off. The scene is the Team look scene option in /config.'
+/** `theme` followed by whitespace and anything else (the typed text already trimmed): the phrases' reply, unless a phrase. */
+const THEME_OTHER = /^theme\s/
 const REPLY_LOOK_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
 const REPLY_LOOK_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
 const REPLY_LOOK_NO_PIN = 'Team look: pitch green (no team pinned: claudinho follow <competition> --team <name> pins one).'
@@ -2011,14 +2023,22 @@ function pinHint(view: View): string {
   return `Pin your team to get only its goals: claudinho follow ${name} --team <name>`
 }
 
-/** The two surfaces that draw a team look: the desktop and mobile apps. */
-const drawsLook = (surface: unknown): boolean => surface === 'desktop' || surface === 'mobile'
+/**
+ * The surface that draws a team look: the desktop app. The phone draws none (in a test on Nov 22, 2026, the Claude
+ * mobile app showed neither the look's colors nor its scene), so a session with only the phone sets no look.
+ */
+const drawsLook = (surface: unknown): boolean => surface === 'desktop'
 
-/** Whether an app that draws a team look is attached now; a roster read that rejects is no. Never rejects. */
-async function lookDrawable($: EngineInterface): Promise<boolean> {
+/**
+ * Whether the app that draws a team look (the desktop app) is attached now; a roster read that rejects is no. With
+ * `ending` (a set that ends our pixel corner live or in a goal, made while a desktop app's session may still hold it),
+ * the mobile app counts too: such a set starts nothing, and a phone that ever drew the scene would show the stadium
+ * emptied rather than a match long over. Never rejects.
+ */
+async function lookDrawable($: EngineInterface, ending = false): Promise<boolean> {
   try {
     const surfaces = await $.session.surfaces()
-    return surfaces.some(drawsLook)
+    return surfaces.some((s) => drawsLook(s) || (ending && s === 'mobile'))
   } catch {
     return false
   }
@@ -2372,7 +2392,7 @@ async function clearOurLook($: EngineInterface): Promise<void> {
 
 /**
  * The team look set from a run's reading, once per look: under `teamTheme: on`, a view, the look not turned off this
- * session, a look not tried since the start or the last off, and the desktop or mobile app in the roster (`setLook`). A
+ * session, a look not tried since the start or the last off, and the desktop app in the roster (`setLook`). A
  * reading that is no view (a failed run, the first-run object, an answer the plugin does not read) sets nothing, but
  * for the pixel corner's hold (`lookWithoutView`). Never rejects, never toasts.
  *
@@ -2434,8 +2454,9 @@ async function lookWithoutView($: EngineInterface): Promise<void> {
 /**
  * A look set once: its key (the scene's, else the look's) is taken before the set, so whatever the set answers (a
  * refusal, `isDrawn: false`, no theme API on an older build) the same look is never tried again; not when it is the
- * look last tried, when the person turned the look off this session, with no desktop or mobile app in the roster, or
- * (`over`) when the look last tried is no longer that one. Its `isDrawn` is kept only when no set or off began after it.
+ * look last tried, when the person turned the look off this session, with no desktop app in the roster (an idle
+ * stadium over our corner live or in a goal also with the mobile app, `lookDrawable`'s `ending`), or (`over`) when
+ * the look last tried is no longer that one. Its `isDrawn` is kept only when no set or off began after it.
  * A set the engine did not refuse stands (drawn or not) when no clear or start began after it; one the person turned
  * off while it was in flight, with no look of ours then standing to clear, is cleared now. A scene is kept for the
  * `Backdrop` hook before the set and dropped when it is refused. A pixel scene is set only while the memory it was
@@ -2459,7 +2480,8 @@ async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | nu
     return
   }
   if (await lookIsOff($)) return
-  if (!(await lookDrawable($))) {
+  // A pixel set that is not live, over our corner live or in a goal, ends it: the phone counts for that alone.
+  if (!(await lookDrawable($, lookLive && scene?.pixel !== undefined && scene.pixel.live !== true))) {
     note()
     return
   }
@@ -2538,7 +2560,7 @@ function lookReason(view: View): string {
  * The command's reply to one of the team look's phrases, after its own run: the option off, the one sentence (no
  * theme call); `off`, the off and its sentence; `on`, the off lifted; then, for `on` and `show`, the look of the
  * command's own view set as the band sets it, and the report: off this session; a reading that is no view, null (the
- * command's existing reply); nothing draws it here (no desktop or mobile app in the roster read now, or the last set
+ * command's existing reply); nothing draws it here (no desktop app in the roster read now, or the last set
  * did not answer drawn); else the team, or pitch green and why. The caller adds a view's footer. Never rejects.
  */
 async function lookCommand($: EngineInterface, ask: LookAsk, reading: Reading): Promise<string | null> {
@@ -2619,7 +2641,8 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
   // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
   // the roster allows is not held by an idle gap; the baseline and the context are left. The pixel corner's hold still
-  // runs out (`lookWithoutView`): a session with only the mobile app runs no band, and draws the look.
+  // runs out (`lookWithoutView`): with no band surface no band runs, and with the phone alone no look is set but the
+  // idle stadium that ends our corner live or in a goal (`lookDrawable`'s `ending`).
   if (!(await mayRun($))) {
     await clear($)
     await lookWithoutView($)
@@ -3022,9 +3045,11 @@ export const register: Register = (on, options) => {
     // The command answers by itself (never `next`): one run on the band's PATH, the band's reading of the answer. No
     // `--columns` (the CLI's own 200-column ceiling, never the window's), none of the band's state touched. The text
     // after it is read once, trimmed, and only compared: `match` opens the pane; `theme`, `theme off` and `theme on`
-    // are the team look's; anything else is ignored. Neither call rejects out of here: `runEnv` never rejects, and the
-    // spawn's rejection is a failed run.
+    // are the team look's; `theme` and any other word is the phrases' reply, at once; anything else is ignored.
+    // Neither call rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
     const typed = typeof e.args === 'string' ? e.args.trim() : ''
+    // Any other word after `theme`: the phrases, at once (no run, nothing set or cleared, no footer).
+    if (!(typed === THEME_OFF_WORDS || typed === THEME_ON_WORDS) && THEME_OTHER.test(typed)) return { text: REPLY_LOOK_PHRASES }
     const env = await runEnv($)
     const wholeEnv = runEnvKept !== null
     const lang = await runLang($)
@@ -3149,7 +3174,8 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Backdrop' }, ($, e, next) => {
-    // The team look's scene: under `teamTheme: on`, on the two apps that draw a look, for a scene of ours, one Svg: a
+    // The team look's scene: under `teamTheme: on`, on the desktop app (and the mobile surface, should the phone ever
+    // ask for a scene a desktop session set), for a scene of ours, one Svg: a
     // pitch or pixel scene this module set and still keeps, its drawing; else a name that is a band's, the band made
     // from the two colors the name carries. Anything else (the option off, another surface, another plugin's scene, a
     // name of ours no longer kept, a name that is no band's) is left to what is beneath. The surface is compared here,

@@ -110,9 +110,10 @@ request** and **writes no file**:
   can put the team you picked first. Claude Code sends that note to the model with your prompt.
   With `context` off, or when its last reading showed no match live, nothing is added. The plugin
   neither reads nor keeps the prompts you send; of what you type, it reads only the text after
-  `/claudinho`, for `match` and the team look's `theme`, `theme off` and `theme on`.
-- With the `teamTheme` option on (it is off by default), it sets the session's theme in the Claude
-  desktop and mobile apps to your team's colors, once per team (with the `teamScene` option on
+  `/claudinho`, for `match` and the team look's `theme` phrases (`theme`, `theme off`, `theme on`,
+  and `theme` followed by any other word, which it answers with the phrases).
+- With the `teamTheme` option on (it is off by default), it sets the session's theme to your
+  team's colors, drawn by the Claude desktop app, once per team (with the `teamScene` option on
   `pixel`, again when its stadium's state or scoreboard changes: your team's match starting or
   ending, a goal by either side of your team's match, another next fixture), and clears the
   theme it set when you type `/claudinho theme off`. The colors come from a table inside the
