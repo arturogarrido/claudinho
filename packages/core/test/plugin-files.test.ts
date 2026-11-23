@@ -92,7 +92,9 @@ describe('the plugin folder', () => {
     const files = ['README.md', 'PRIVACY.md', 'AGENTS.md', 'packages/plugin/README.md', 'packages/plugin/.claude-plugin/plugin.json', 'packages/plugin/hooks/register.tsx', 'scripts/plugin-demo.sh'];
     for (const f of files) {
       const text = readFileSync(join(ROOT, f), 'utf8').replace(/\s+/g, ' ');
-      expect(text, f).not.toMatch(/\bdesktop (?:and|or) mobile app/i);
+      // Either order, singular or plural, and the scene's "desktop app only", which says more than one phone test showed.
+      expect(text, f).not.toMatch(/\b(?:desktop (?:and|or) mobile|mobile (?:and|or) desktop) apps?\b/i);
+      expect(text, f).not.toMatch(/\bdesktop app only\b/i);
     }
     const reply = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
     expect(reply).toContain("'The team look shows in the Claude desktop app; nothing draws it in this session.'");

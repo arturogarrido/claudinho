@@ -766,9 +766,11 @@ describe('the pixel corner: the edges the first cases did not reach', () => {
     for (let i = 0; i < 63; i += 1) await clock.advance(15_000)
     expect(sets).toHaveLength(1)
     await attach('desktop', 'd2')
+    // The desktop app's first reading after the hold: the idle stadium at once, never the old live one or a goal.
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
     for (let i = 0; i < 4; i += 1) await clock.advance(15_000)
-    expect(sets.length).toBeGreaterThan(1)
-    expect(await drawn($, sceneOf(sets[sets.length - 1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+    for (const s of sets.slice(1)) expect(await drawn($, sceneOf(s))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
   })
 })
 

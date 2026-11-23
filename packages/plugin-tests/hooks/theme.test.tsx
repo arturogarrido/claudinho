@@ -299,9 +299,11 @@ describe('/claudinho theme', () => {
 
   test('the same reply with the option off: it names the phrases, and the option is where it is turned on', async ($, on) => {
     const { sets } = themes(on)
-    const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    const { command, argvs } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    const runs = argvs.length
     expect((await command('theme pixel')).text).toBe(SAID_PHRASES)
     expect(sets).toEqual([])
+    expect(argvs).toHaveLength(runs)
   })
 })
 
