@@ -759,17 +759,16 @@ describe('the pixel corner: the edges the first cases did not reach', () => {
     for (const s of sets.slice(2)) expect(Number.isNaN(stampOf((await drawn($, sceneOf(s))) ?? ''))).toBe(true)
   })
 
-  test('the desktop app detaches and the phone stays: with no surface for the band no CLI runs, and the stadium still empties after the hold', PIXEL, async ($, on) => {
+  test('the desktop app detaches and the phone stays: no CLI runs and nothing is set (the phone draws no look); the desktop app back after the hold sets the idle stadium', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock, detach } = await world($, on, [live([0, 0])], { ...DESKTOP, surfaces: ['desktop', 'mobile'] })
+    const { clock, detach, attach } = await world($, on, [live([0, 0]), STALE], { ...DESKTOP, surfaces: ['desktop', 'mobile'] })
     await detach('desktop')
-    for (let i = 0; i < 19; i += 1) await clock.advance(15_000)
+    for (let i = 0; i < 63; i += 1) await clock.advance(15_000)
     expect(sets).toHaveLength(1)
+    await attach('desktop', 'd2')
     for (let i = 0; i < 4; i += 1) await clock.advance(15_000)
-    expect(sets).toHaveLength(2)
-    expect(await drawn($, sceneOf(sets[1]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle' }))
-    for (let i = 0; i < 40; i += 1) await clock.advance(15_000)
-    expect(sets).toHaveLength(2)
+    expect(sets.length).toBeGreaterThan(1)
+    expect(await drawn($, sceneOf(sets[sets.length - 1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
   })
 })
 
@@ -899,13 +898,12 @@ describe('the pixel corner: a live stadium is always noted, so it always ends', 
     expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
   })
 
-  test('the desktop app detaches during a match and the phone stays: a /claudinho typed inside the hold empties the stadium at once', PIXEL, async ($, on) => {
+  test('the desktop app detaches during a match and the phone stays: a /claudinho typed inside the hold sets nothing (the phone draws no look)', PIXEL, async ($, on) => {
     const { sets } = engine(on)
     const { command, detach } = await world($, on, [live([0, 0])], { ...DESKTOP, surfaces: ['desktop', 'mobile'] })
     await detach('desktop')
     await command()
-    expect(sets).toHaveLength(2)
-    expect(await drawn($, sceneOf(sets[1]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+    expect(sets).toHaveLength(1)
   })
 
   test('a phone-only /claudinho during the match remembers nothing: the desktop app attaching on a view that is not current is idle', PIXEL, async ($, on) => {
