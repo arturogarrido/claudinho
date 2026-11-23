@@ -179,7 +179,8 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
     scarf: for a national team, in its flag's colors as two or three plain stripes; a club, and the few national teams
     the plugin has no flag for, keep the scarf in the team's two colors. A reading the CLI
     cannot vouch for, or no answer from the CLI, keeps it live; the stadium empties five minutes after the last fresh
-    reading that showed the match live. `/claudinho theme off`, a new session, or a change of your team or of the
+    reading that showed the match live. A `/claudinho` typed while only the phone is attached can end that wait
+    sooner, never extend it. `/claudinho theme off`, a new session, or a change of your team or of the
     competition forgets the match: the stadium is live again only from the next fresh reading that shows it, and a
     goal it had seen is not played again.
   - **idle**, the rest of the time: an empty stadium, the scoreboard dimmed with the codes of your team's next fixture.
@@ -318,8 +319,8 @@ answered:
 
 A reply made from a reading ends with the provider's name and the non-affiliation sentence, each when the reading
 carries it. `/claudinho match` answers in one line only when its pane opened on a terminal or desktop window and
-holds both of those sentences; otherwise it gives the same reply as `/claudinho`. A `/claudinho` runs the CLI once,
-`/claudinho match` once more for the match its pane opens on, and `/claudinho theme` followed by any other word runs
+holds both of those sentences; otherwise it gives the same reply as `/claudinho`. A `/claudinho` runs the CLI, `/claudinho
+match` runs it again to read the match its pane opens on, and `/claudinho theme` followed by any other word runs
 nothing and answers at once; none of them changes what the band shows. A `/claudinho` typed while Claude is working runs when the turn ends.
 
 ### The match pane, in full
