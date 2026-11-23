@@ -7,7 +7,7 @@ import { START, liveRecord, momentView, view, world } from './world'
 
 /**
  * The team look's scenes (plugin 0.9.0, changed in 0.10.0): under `teamTheme: on`, `teamScene` chooses what is drawn
- * behind the conversation in the desktop and mobile apps: `band` (the default, 0.8.0's band, unchanged), `pitch` (faded
+ * behind the conversation in the desktop app: `band` (the default, 0.8.0's band, unchanged), `pitch` (faded
  * pitch lines and a small scarf with the team's name) or `pixel` (a stadium corner: terraces, fans, a goal, and a
  * scoreboard with the two teams' codes, never a score). The pixel corner has three states: `live` (the picked team's
  * match is in play, by a current view), `idle` (an empty stadium; the board shows the next fixture's codes only when
@@ -847,14 +847,13 @@ describe('the pixel corner: its memory has one owner and one way to be forgotten
     expect(Number.isNaN(stampOf((await drawn($, sceneOf(sets[1]))) as string))).toBe(true)
   })
 
-  test('a session with only the phone: the command never starts a live stadium nothing would end (idle, the next fixture\'s codes)', PIXEL, async ($, on) => {
+  test('a session with only the phone: the command sets no stadium (the phone draws no look), during the match or after', PIXEL, async ($, on) => {
     const { sets } = engine(on)
     const { clock, command } = await world($, on, [live([0, 0], {}, NEXT_LIV)], { start: { surface: 'mobile', isInteractive: true } })
     await command()
-    expect(sets).toHaveLength(1)
-    expect(await drawn($, sceneOf(sets[0]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle', home: 'LIV', away: 'EVE' }))
+    expect(sets).toEqual([])
     for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
-    expect(sets).toHaveLength(1)
+    expect(sets).toEqual([])
   })
 })
 
@@ -1361,12 +1360,11 @@ describe('the pixel corner: the idle board is the pick\'s next fixture, or blank
     expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...ITA, state: 'idle' }))
   })
 
-  test('a session with only the phone: the same rule (another pair\'s fixture is blank)', PIXEL, async ($, on) => {
+  test('a session with only the phone: no stadium is set for another pair\'s fixture either', PIXEL, async ($, on) => {
     const { sets } = engine(on)
     const { command } = await world($, on, [live([0, 0], {}, NEXT_ARS)], { start: { surface: 'mobile', isInteractive: true } })
     await command()
-    expect(sets).toHaveLength(1)
-    expect(await drawn($, sceneOf(sets[0]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+    expect(sets).toEqual([])
   })
 
   test('the live board is the picked match\'s own, whatever the next fixture says', PIXEL, async ($, on) => {

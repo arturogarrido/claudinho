@@ -83,8 +83,19 @@ describe('the plugin folder', () => {
     expect(teamTheme?.options).toEqual(['off', 'on']);
     expect(teamTheme?.default).toBe('off');
     expect(String(teamTheme?.description)).toMatch(/desktop/i);
-    expect(String(teamTheme?.description)).toMatch(/mobile/i);
+    // The look shows in the desktop app: the phone drew neither its colors nor a scene (Nov 22, 2026).
+    expect(String(teamTheme?.description)).not.toMatch(/\bdesktop (?:and|or) mobile app/i);
     expect(String(teamTheme?.description)).toMatch(/replaces/i);
+  });
+
+  it('no public copy says the team look shows in the mobile app (the phone drew neither its colors nor a scene, Nov 22, 2026)', () => {
+    const files = ['README.md', 'PRIVACY.md', 'AGENTS.md', 'packages/plugin/README.md', 'packages/plugin/.claude-plugin/plugin.json', 'packages/plugin/hooks/register.tsx', 'scripts/plugin-demo.sh'];
+    for (const f of files) {
+      const text = readFileSync(join(ROOT, f), 'utf8').replace(/\s+/g, ' ');
+      expect(text, f).not.toMatch(/\bdesktop (?:and|or) mobile app/i);
+    }
+    const reply = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
+    expect(reply).toContain("'The team look shows in the Claude desktop app; nothing draws it in this session.'");
   });
 
   it('the plugin README names the teamTheme option, where it shows and that it replaces the session\'s theme', () => {
