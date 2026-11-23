@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 2026-11-11
+**Effective date:** 2026-11-22
 
 Claudinho is an independent, open-source project: a CLI, a Claude Code / Cursor
 statusline, a score-aware hook, an MCP server, and a Claude Code plugin that show live
@@ -118,7 +118,9 @@ request** and **writes no file**:
   ending, a goal by either side of your team's match, another next fixture), and clears the
   theme it set when you type `/claudinho theme off`. The colors come from a table inside the
   plugin: apart from the session's list of attached apps, read to know whether the desktop app
-  is attached, this reads nothing more and sends nothing anywhere. With `teamTheme` off it never sets or clears a theme.
+  is attached (to set the look) and, with `teamScene` on `pixel`, whether the terminal or the
+  desktop app is attached (the two that show the band; only then can the stadium go live), this
+  reads nothing more and sends nothing anywhere. With `teamTheme` off it never sets or clears a theme.
 - Between runs it keeps its last readings (public match data) in the state Claude Code holds for
   the session, and, with `teamTheme` on, whether you turned the team look off with
   `/claudinho theme off`; it writes no file of its own. Its options (`toasts`, `celebrate`, `context`,
