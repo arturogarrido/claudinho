@@ -174,9 +174,9 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
   tell the plugin where its panels are, so this is your choice); the scoreboard and a flag scarf still read left to
   right. While it is open, the app's session list covers the stadium at the left, and its session panel covers it at the right: choose the side whose panel you keep closed. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
-  terminal or the desktop app attached, where the band runs. With the phone alone nothing is set (a live stadium
-  left when the desktop app detaches still empties five minutes after the last fresh reading, or at once at a
-  `/claudinho` you type). It has three states:
+  terminal or the desktop app attached, where the band runs. With the phone alone nothing is set, the end of a live
+  stadium included: a live stadium left when the desktop app detaches empties when the desktop app is back, at its
+  next reading after the hold. It has three states:
   - **live**, while your team's match is in play: fans on the terraces and a ball by the goal. One fan holds up a
     scarf: for a national team, in its flag's colors as two or three plain stripes; a club, and the few national teams
     the plugin has no flag for, keep the scarf in the team's two colors. A reading the CLI
@@ -396,8 +396,7 @@ session.
   checks each folder of the `PATH` it handed that run for `claudinho` (once per session for the band, and at each
   `/claudinho` that fails), to say whether the CLI is installed. It reads no file's contents and writes no file.
 - **The session:** which windows are attached. Without one the band runs nothing; `/claudinho` still runs the CLI
-  when you type it. With `teamTheme: on`, also whether the desktop app is attached, for the team look (and, to
-  empty a live stadium the desktop app left, whether the mobile app is).
+  when you type it. With `teamTheme: on`, also whether the desktop app is attached, for the team look.
 
 ### Your prompts and your commands
 

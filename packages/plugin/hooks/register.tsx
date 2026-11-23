@@ -2029,16 +2029,11 @@ function pinHint(view: View): string {
  */
 const drawsLook = (surface: unknown): boolean => surface === 'desktop'
 
-/**
- * Whether the app that draws a team look (the desktop app) is attached now; a roster read that rejects is no. With
- * `ending` (a set that ends our pixel corner live or in a goal, made while a desktop app's session may still hold it),
- * the mobile app counts too: such a set starts nothing, and a phone that ever drew the scene would show the stadium
- * emptied rather than a match long over. Never rejects.
- */
-async function lookDrawable($: EngineInterface, ending = false): Promise<boolean> {
+/** Whether the app that draws a team look (the desktop app) is attached now; a roster read that rejects is no. Never rejects. */
+async function lookDrawable($: EngineInterface): Promise<boolean> {
   try {
     const surfaces = await $.session.surfaces()
-    return surfaces.some((s) => drawsLook(s) || (ending && s === 'mobile'))
+    return surfaces.some(drawsLook)
   } catch {
     return false
   }
@@ -2454,9 +2449,9 @@ async function lookWithoutView($: EngineInterface): Promise<void> {
 /**
  * A look set once: its key (the scene's, else the look's) is taken before the set, so whatever the set answers (a
  * refusal, `isDrawn: false`, no theme API on an older build) the same look is never tried again; not when it is the
- * look last tried, when the person turned the look off this session, with no desktop app in the roster (an idle
- * stadium over our corner live or in a goal also with the mobile app, `lookDrawable`'s `ending`), or (`over`) when
- * the look last tried is no longer that one. Its `isDrawn` is kept only when no set or off began after it.
+ * look last tried, when the person turned the look off this session, with no desktop app in the roster (the phone
+ * alone sets nothing, a stadium's end included: the look is noted, and set when the desktop app is back), or (`over`)
+ * when the look last tried is no longer that one. Its `isDrawn` is kept only when no set or off began after it.
  * A set the engine did not refuse stands (drawn or not) when no clear or start began after it; one the person turned
  * off while it was in flight, with no look of ours then standing to clear, is cleared now. A scene is kept for the
  * `Backdrop` hook before the set and dropped when it is refused. A pixel scene is set only while the memory it was
@@ -2480,8 +2475,7 @@ async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | nu
     return
   }
   if (await lookIsOff($)) return
-  // A pixel set that is not live, over our corner live or in a goal, ends it: the phone counts for that alone.
-  if (!(await lookDrawable($, lookLive && scene?.pixel !== undefined && scene.pixel.live !== true))) {
+  if (!(await lookDrawable($))) {
     note()
     return
   }
@@ -2641,8 +2635,8 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
   // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
   // the roster allows is not held by an idle gap; the baseline and the context are left. The pixel corner's hold still
-  // runs out (`lookWithoutView`): with no band surface no band runs, and with the phone alone no look is set but the
-  // idle stadium that ends our corner live or in a goal (`lookDrawable`'s `ending`).
+  // runs out (`lookWithoutView`): with no band surface no band runs, and with the phone alone no look is set (the
+  // stadium's end is noted, and set when the desktop app is back).
   if (!(await mayRun($))) {
     await clear($)
     await lookWithoutView($)
