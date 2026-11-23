@@ -70,9 +70,9 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the release that shares the celebration\'s drawing with the demo, 0.12.2', () => {
+  it('the manifest is the release whose team look is the desktop app\'s, 0.12.3', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.12.2');
+    expect(m.version).toBe('0.12.3');
   });
 
   it('the teamTheme option: off or on, OFF by default (a session holds one theme, and ours would replace the person\'s), and its description says where it shows and what it replaces', () => {
@@ -83,8 +83,21 @@ describe('the plugin folder', () => {
     expect(teamTheme?.options).toEqual(['off', 'on']);
     expect(teamTheme?.default).toBe('off');
     expect(String(teamTheme?.description)).toMatch(/desktop/i);
-    expect(String(teamTheme?.description)).toMatch(/mobile/i);
+    // The look shows in the desktop app: the phone drew neither its colors nor a scene (Nov 22, 2026).
+    expect(String(teamTheme?.description)).not.toMatch(/\bdesktop (?:and|or) mobile app/i);
     expect(String(teamTheme?.description)).toMatch(/replaces/i);
+  });
+
+  it('no public copy says the team look shows in the mobile app (the phone drew neither its colors nor a scene, Nov 22, 2026)', () => {
+    const files = ['README.md', 'PRIVACY.md', 'AGENTS.md', 'packages/plugin/README.md', 'packages/plugin/.claude-plugin/plugin.json', 'packages/plugin/hooks/register.tsx', 'scripts/plugin-demo.sh'];
+    for (const f of files) {
+      const text = readFileSync(join(ROOT, f), 'utf8').replace(/\s+/g, ' ');
+      // Either order, singular or plural, and the scene's "desktop app only", which says more than one phone test showed.
+      expect(text, f).not.toMatch(/\b(?:desktop (?:and|or) mobile|mobile (?:and|or) desktop) app(?:s|lications?)?\b/i);
+      expect(text, f).not.toMatch(/\bdesktop app only\b/i);
+    }
+    const reply = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
+    expect(reply).toContain("'The team look shows in the Claude desktop app; nothing draws it in this session.'");
   });
 
   it('the plugin README names the teamTheme option, where it shows and that it replaces the session\'s theme', () => {
@@ -313,10 +326,16 @@ describe('the plugin directory listing', () => {
     expect(src).toContain("const THEME_WORD = 'theme'");
     expect(src).toContain("const THEME_OFF_WORDS = 'theme off'");
     expect(src).toContain("const THEME_ON_WORDS = 'theme on'");
-    // `typed` is only ever compared, never printed, stored or handed on.
-    const uses = [...command.matchAll(/\btyped\b[^\n]*/g)].map((m) => m[0]).filter((u) => !u.startsWith("typed = typeof e.args"));
+    expect(src).toContain('const THEME_OTHER = /^theme\\s/');
+    // `typed` is only ever compared, never printed, stored or handed on: EVERY use on a line is read, each one either
+    // `typed === <a word>` or the one pattern test, `THEME_OTHER.test(typed)`.
+    const uses = [...command.matchAll(/\btyped\b/g)]
+      .map((m) => ({ before: command.slice(Math.max(0, m.index - 17), m.index), after: command.slice(m.index, m.index + 40) }))
+      .filter((u) => !u.after.startsWith('typed = typeof e.args'));
     expect(uses.length).toBeGreaterThan(0);
-    expect(uses.filter((u) => !/^typed === (PANE_WORD|THEME_WORD|THEME_OFF_WORDS|THEME_ON_WORDS)\b/.test(u))).toEqual([]);
+    const allowed = (u: { before: string; after: string }) =>
+      /^typed === (PANE_WORD|THEME_WORD|THEME_OFF_WORDS|THEME_ON_WORDS)\b/.test(u.after) || (u.before.endsWith('THEME_OTHER.test(') && u.after.startsWith('typed)'));
+    expect(uses.filter((u) => !allowed(u))).toEqual([]);
   });
 
   it('every environment variable the hooks module reads is named in PRIVACY.md', () => {

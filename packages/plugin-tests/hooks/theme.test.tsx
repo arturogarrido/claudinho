@@ -4,7 +4,7 @@ import { bandColor, bandSvg, buildLook, colorsForPick } from './team-look'
 import { FIRST_RUN, START, view, world } from './world'
 
 /**
- * The team look (plugin 0.8.0): with `teamTheme: on`, in a session a desktop or mobile app is attached to, the plugin
+ * The team look (plugin 0.8.0): with `teamTheme: on`, in a session the desktop app is attached to, the plugin
  * sets ONE theme from the pinned team (the view's `pick`): colors for both modes and a band across the top in the
  * team's two colors. Off is
  * the default, and then the plugin never names the session's theme: a session holds one theme, and a set replaces the
@@ -22,7 +22,9 @@ const NO_PIN = { pick: null }
 const WORLD_CUP = { competition: { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'saved' } }
 
 const SAID_OFF = 'The team look is off. Turn it on in /config (Team look).'
-const SAID_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
+const SAID_NOT_DRAWN = 'The team look shows in the Claude desktop app; nothing draws it in this session.'
+/** Any other word after `theme`: the phrases and where the scene is chosen, answered at once (no run, no view, so no footer). */
+const SAID_PHRASES = 'The theme phrases are /claudinho theme, theme on and theme off. The scene is the Team look scene option in /config.'
 const SAID_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
 const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team (claudinho follow <competition> --team <name> pins one)).`
 const SAID_PITCH_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
@@ -280,7 +282,28 @@ describe('/claudinho theme', () => {
     const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
     const plain = (await command()).text
     expect((await command('themes')).text).toBe(plain)
-    expect((await command('theme  off')).text).toBe(plain)
+    expect((await command('themepitch')).text).toBe(plain)
+  })
+
+  test('any other word after theme (a scene\'s name, a misspelt phrase): the phrases and where the scene is chosen, at once, with nothing set or cleared', ON, async ($, on) => {
+    const { sets, clears } = themes(on)
+    const { command, argvs } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    const before = { sets: sets.length, runs: argvs.length }
+    for (const typed of ['theme pitch', 'theme pixel', 'theme band', 'theme  off', 'theme on now', 'theme\tpitch']) {
+      expect((await command(typed)).text, typed).toBe(SAID_PHRASES)
+    }
+    expect(sets).toHaveLength(before.sets)
+    expect(clears).toEqual([])
+    expect(argvs).toHaveLength(before.runs)
+  })
+
+  test('the same reply with the option off: it names the phrases, and the option is where it is turned on', async ($, on) => {
+    const { sets } = themes(on)
+    const { command, argvs } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    const runs = argvs.length
+    expect((await command('theme pixel')).text).toBe(SAID_PHRASES)
+    expect(sets).toEqual([])
+    expect(argvs).toHaveLength(runs)
   })
 })
 
@@ -342,11 +365,22 @@ describe('/claudinho theme: what the first round of review found', () => {
     expect(sets).toHaveLength(1)
   })
 
-  test('only the mobile app attached: the band does not run, and a typed /claudinho sets the look', ON, async ($, on) => {
+  test('only the mobile app attached: nothing sets the look (the phone drew neither colors nor a scene, Nov 22, 2026), and theme says where it shows', ON, async ($, on) => {
     const { sets } = themes(on)
     const { command } = await world($, on, [view(LINE, ARSENAL)], { start: { surface: 'mobile', isInteractive: true } })
     expect(sets).toEqual([])
     await command()
+    expect(sets).toEqual([])
+    expect((await command('theme')).text).toBe(withD(SAID_NOT_DRAWN))
+    expect((await command('theme on')).text).toBe(withD(SAID_NOT_DRAWN))
+    expect(sets).toEqual([])
+  })
+
+  test('the desktop app attaching to a phone-only session sets the look on its first reading', ON, async ($, on) => {
+    const { sets } = themes(on)
+    const { attach } = await world($, on, [view(LINE, ARSENAL)], { start: { surface: 'mobile', isInteractive: true } })
+    expect(sets).toEqual([])
+    await attach('desktop', 'd1')
     expect(sets).toEqual([lookOf('Arsenal', 'espn:359')])
   })
 

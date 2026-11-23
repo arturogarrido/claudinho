@@ -21,7 +21,7 @@
 # PLUGIN_DEMO_NO_VALIDATE set to a value that is not empty, the demo is assembled and not validated, and the script
 # says so; PLUGIN_DEMO_NO_VALIDATE set to the empty string skips nothing.
 #
-# Then load the folder in a session of the desktop app (the scenes show in the desktop and mobile apps only; the
+# Then load the folder in a session of the desktop app (the scenes show in the desktop app; the
 # celebration also plays in a terminal's band, as text art):
 # start Claude Code with `--plugin-dir <folder>`, or name the folder in CLAUDE_CODE_PLUGIN_DIRS, and type `/demo`.
 # After a change to the plugin's drawing, run this again (a new folder each time) and load that folder.
