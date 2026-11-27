@@ -128,6 +128,23 @@ describe('the goal\'s sound ends with the goal\'s six seconds, with no reading',
     expect(sets[2]?.sound).toEqual(LIVE_SOUND)
   })
 
+  test('the desktop app attaching two seconds into a goal the terminal saw: the goal plays its six seconds from its set', PIXEL, async ($, on) => {
+    // The six seconds belong to what the app shows: the stadium's goal animation runs from its drawing.
+    const { sets } = engine(on)
+    const { clock, attach } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1]), live([0, 1])])
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(0)
+    await clock.advance(2_000)
+    await attach('desktop', 'd1')
+    expect(sets).toHaveLength(1)
+    expect(sets[0]?.sound).toEqual(GOAL_SOUND)
+    await clock.advance(5_800)
+    expect(sets).toHaveLength(1)
+    await clock.advance(300)
+    expect(sets).toHaveLength(2)
+    expect(sets[1]?.sound).toEqual(LIVE_SOUND)
+  })
+
   test('the other side\'s groan ends the same way', PIXEL, async ($, on) => {
     const { sets } = engine(on)
     const { clock } = await world($, on, [live([0, 0]), live([1, 0]), live([1, 0])], DESKTOP)
@@ -260,6 +277,24 @@ describe('a build that does not take sound', () => {
     })
     on('theme.clear', () => ({ value: { isDrawn: false, reason: 'cleared' } }))
     await world($, on, [live([0, 0]), view(LINE, { current: true })], DESKTOP)
+    expect(sets).toHaveLength(2)
+    expect(sets[0]?.sound).toEqual(LIVE_SOUND)
+    expect(sets[1]?.sound).toEqual(IDLE_SOUND)
+  })
+
+  test('a newer look of the same team and memory set while the refused one was out: the older look is not sent again', PIXEL, async ($, on) => {
+    // The command reads the same competition and pick with nothing live: the idle stadium, from the same memory.
+    const sets: SetArgs[] = []
+    on('theme.set', async (_$, e) => {
+      sets.push(JSON.parse(JSON.stringify(e)) as SetArgs)
+      if (sets.length === 1) {
+        await $.command.run({ command: 'claudinho', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+        return { deny: 'theme.set denied' }
+      }
+      return { value: { isDrawn: true, requestId: 'theme' } }
+    })
+    on('theme.clear', () => ({ value: { isDrawn: false, reason: 'cleared' } }))
+    await world($, on, [live([0, 0]), momentView([], [])], DESKTOP)
     expect(sets).toHaveLength(2)
     expect(sets[0]?.sound).toEqual(LIVE_SOUND)
     expect(sets[1]?.sound).toEqual(IDLE_SOUND)
