@@ -290,7 +290,7 @@ describe('the plugin directory listing', () => {
     expect(imports.length).toBe((src.match(/^\s*import\b/gm) ?? []).length);
     expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look' && m[3] !== './team-scenes' && m[3] !== './celebration').map((m) => m[3])).toEqual([]);
     const values = imports.filter((m) => !m[1]).flatMap((m) => (m[2] ?? '').split(',').map((v) => v.trim()));
-    expect(values.filter((v) => v !== '').sort()).toEqual(['FRAME_MS', 'FULLTIME_MS', 'GOAL_FRAMES', 'atom', 'bandSvg', 'boardCode', 'buildLook', 'celebrationBall', 'celebrationRow', 'colorsForPick', 'flagForPick', 'goalRow', 'pitchSvg', 'pixelSvg', 'read', 'resultRow', 'update']);
+    expect(values.filter((v) => v !== '').sort()).toEqual(['FRAME_MS', 'FULLTIME_MS', 'GOAL_FRAMES', 'atom', 'bandSvg', 'boardCode', 'buildLook', 'celebrationBall', 'celebrationRow', 'colorsForPick', 'flagForPick', 'goalRow', 'pitchSvg', 'pixelSound', 'pixelSvg', 'read', 'resultRow', 'update']);
     const argv = String.raw`\s*\[\s*(['"][^'"]*['"])\s*,\s*(['"][^'"]*['"])`;
     const runs = [...src.matchAll(new RegExp(String.raw`\$${DOT}process${DOT}run${OPEN}${argv}`, 'g'))];
     expect(runs.length).toBe((src.match(new RegExp(String.raw`\$${DOT}process${DOT}run\b`, 'g')) ?? []).length);

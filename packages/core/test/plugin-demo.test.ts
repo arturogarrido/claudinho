@@ -136,7 +136,7 @@ describe('the plugin demo (development only)', () => {
   it('the demo draws with the plugin\'s functions: the scenes, the look and the colors are imported, never written here', () => {
     const src = read('packages/plugin-demo/hooks/register.tsx');
     const imported = (file: string) => (new RegExp(`import \\{([^}]*)\\} from '\\./${file}'`).exec(src)?.[1] ?? '').split(',').map((n) => n.trim()).filter(Boolean);
-    expect(imported('team-scenes').sort()).toEqual(['pitchSvg', 'pixelSvg']);
+    expect(imported('team-scenes').sort()).toEqual(['pitchSvg', 'pixelSound', 'pixelSvg']);
     expect(imported('team-look')).toEqual(expect.arrayContaining(['bandSvg', 'buildLook']));
     expect(imported('team-colors')).toEqual(expect.arrayContaining(['FLAG_COLORS', 'TEAM_COLORS']));
     // No drawing of its own: the only svg it hands the app comes from those functions.
