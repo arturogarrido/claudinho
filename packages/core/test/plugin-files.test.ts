@@ -70,9 +70,9 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the release whose team look is the desktop app\'s, 0.12.3', () => {
+  it('the manifest is the release whose pixel stadium sounds its state, 0.13.0', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.12.3');
+    expect(m.version).toBe('0.13.0');
   });
 
   it('the teamTheme option: off or on, OFF by default (a session holds one theme, and ours would replace the person\'s), and its description says where it shows and what it replaces', () => {
