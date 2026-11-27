@@ -441,6 +441,11 @@ both from the CLI's answer the plugin already read, and at a goal the goal word 
 when it names none). The pixel corner's scarf,
 for a national team, takes its flag's colors from the same file; so do the scoreboard's stripes at your national
 team's goal, and the other team's goal takes that team's colors from it too.
+With `teamScene: pixel`, each set of the pixel corner also hands the desktop app the stadium's sound for its state,
+from `hooks/team-scenes.ts` (`pixelSound`): an ambience and a click cue, written as numbers the app makes the sound from,
+never a recording, and the same for every team. It reads nothing and sends nothing off your machine, and the app plays
+it only once you press the speaker in the session's title bar. At the end of a goal's six seconds the plugin sets the
+live stadium once by a timer, with no run of the CLI, so the goal's sound ends with it.
 With `teamTheme: off` it calls neither and draws nothing.
 
 ## Data and disclaimer

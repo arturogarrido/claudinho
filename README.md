@@ -33,7 +33,8 @@ band of color, a pitch with your team's scarf, or a pixel-art stadium. The stadi
 your team's match is live. A goal sets off fireworks, and the scoreboard flashes the goal word in your language
 (`GOOOAL`, `GOOOL` in Spanish and Portuguese, `BUUUT` in French) and the scoring team's colors (for your national
 team, its flag's colors). It is off until you turn it on: set `teamTheme` to `on` and `teamScene` to `pixel` in the
-plugin's options (`teamScenePlace: left` puts the stadium at the bottom left). The look shows in the Claude desktop
+plugin's options (`teamScenePlace: left` puts the stadium at the bottom left). In the desktop app the stadium also
+sounds its state once you turn on the speaker in the session's title bar: a crowd's murmur, a roar at your team's goal. The look shows in the Claude desktop
 app (in a test on Nov 22, 2026, the Claude mobile app showed neither its colors nor its scene). The details are in
 [The team look](packages/plugin/README.md#the-team-look).
 
