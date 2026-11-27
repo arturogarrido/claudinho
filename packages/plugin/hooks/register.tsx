@@ -228,8 +228,9 @@ import { boardCode, pitchSvg, pixelSound, pixelSvg } from './team-scenes'
  *   record's scope, with no next fixture, in the record's look, while the scene last tried (of any scope: an app still
  *   shows it after a pick's change) is the corner live or in a goal: so the hold runs out with no view, and nothing is
  *   set where nothing was. A goal's end has one timer (plugin 0.13.0, `goalEnd`): armed when a goal board's key is
- *   taken, it sets the corner at the goal's end as a reading that is no view would (live, inside the hold), so the
- *   goal and its sound end with the six seconds; the next reading then finds that look and sets nothing. Before 0.13.0
+ *   taken, for six seconds from then (from the set, not from the run's start: a slow read or an app attaching late
+ *   takes nothing from what the app shows), it sets the corner as a reading that is no view would (live, inside the
+ *   hold), so the goal and its sound end with its six seconds; the next reading then finds that look and sets nothing. Before 0.13.0
  *   the first reading after the 6 seconds set `live`. The key adds the state, the two
  *   codes, the stamp, whose goal it is with the other team's colors, the flag, the goal's word and the place: each
  *   state is set once, and a refused set is not retried per tick.
@@ -513,9 +514,12 @@ let lookGen = 0
 let soundDropped = false
 /**
  * The pixel goal's end (plugin 0.13.0): one timer, armed when `setLook` takes the key of a pixel goal board (before
- * its set, so a refused goal ends too) for the time left of the memory's goal (`until`), whose callback sets the
- * corner as a reading that is no view would (`lookWithoutView`: past the goal, the live board with its murmur), so the
- * roar or the groan ends with the goal's six seconds and not at the next reading. Cancelled when a later look's key is
+ * its set, so a refused goal ends too) for the goal's six seconds (`GOAL_SCENE_MS`) counted from that moment, not
+ * from the memory's `until`: the goal's animation runs from its drawing, so a slow read of the score, or an app that
+ * attaches inside the goal, takes nothing from what the app shows. Its callback sets the corner as a reading that is no
+ * view would (`lookWithoutView`): the memory's goal is past by then (its `until` is counted from the run's start, which
+ * is before the set), so the live board is set with its murmur, and the roar or the groan ends with the six seconds,
+ * not at the next reading. Cancelled when a later look's key is
  * taken, by `/claudinho theme off`, by a clear of ours and by `session.start`: never two armed.
  */
 let goalEnd: Timer | null = null
@@ -549,8 +553,8 @@ let sceneSerial = 0
  * colors and the flag a reading that is no view draws its scene in (`lookWithoutView`). Two writers fill
  * it, both into the record a reading took before its first await, so a write after a forget lands in a record nobody
  * reads: a reading's board (`pixelBoard`: the hold and the goal) and a set asked for (`setLook`: the look). No timer
- * is armed on it but the goal's end (`goalEnd`, which reads it as a reading that is no view does): each reading asks it. The last stamp given (`max(previous + 1, the clock's milliseconds)`, so a reload's
- * stamps are new too) is the module's, outside the record: a stamp is never given twice.
+ * is armed on it but the goal's end (`goalEnd`, which reads it as a reading that is no view does): each reading asks
+ * it. The last stamp given (`max(previous + 1, the clock's milliseconds)`, so a reload's stamps are new too) is the module's, outside the record: a stamp is never given twice.
  */
 type PixelScope = { slug: string; team: string | null }
 type PixelMemory = {
@@ -2293,10 +2297,10 @@ type SceneWant = {
   alt: string
   draw: () => string
   /**
-   * The pixel corner's: the memory it was made from, whether it is live (or goal), and for a goal board the end of the
-   * memory's goal (`until`, for `goalEnd`).
+   * The pixel corner's: the memory it was made from, whether it is live (or goal), and whether it is a goal board
+   * (`goal`, which arms `goalEnd`).
    */
-  pixel?: { mem: PixelMemory; live: boolean; until?: number }
+  pixel?: { mem: PixelMemory; live: boolean; goal?: true }
   /** The pixel corner's sound for its board (plugin 0.13.0, `pixelSound`); the band and the pitch have none. */
   sound?: ThemeSound
 }
@@ -2342,7 +2346,7 @@ function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
     pixel: {
       mem,
       live: board.state !== 'idle',
-      ...(board.state === 'goal' && mem.goal !== null ? { until: mem.goal.until } : {}),
+      ...(board.state === 'goal' ? { goal: true as const } : {}),
     },
     sound: pixelSound(board.state, by),
   }
@@ -2518,8 +2522,8 @@ async function lookWithoutView($: EngineInterface): Promise<void> {
  * notes its look in that memory (the memory's second writer), unless the look is off, a set made since won (`over`)
  * or the memory was forgotten: when the scene is already the look last tried, when no app is attached to draw it, and
  * before a set. Whether the look last tried is our corner live or in a goal (`lookLive`) is written with its key.
- * A pixel goal board's key arms the goal's end (`goalEnd`) before the set, so a refused goal ends too; any other key
- * cancels it. A pixel scene's set carries its sound (plugin 0.13.0) until the module drops sound (`soundDropped`).
+ * A pixel goal board's key arms the goal's end (`goalEnd`, six seconds from then) before the set, so a refused goal
+ * ends too; any other key cancels it. A pixel scene's set carries its sound (plugin 0.13.0) until the module drops sound (`soundDropped`).
  * When the engine refuses that set (it throws), the same look (the same scene's name, under the same key: still one
  * look) is sent once more without the sound, only while the look is not off and no set, off, clear or start began and
  * no forget came meanwhile; else the look is a refusal, its scene dropped. Sound is dropped for the module's life only
@@ -2552,8 +2556,7 @@ async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | nu
   lookKey = key
   lookLive = scene?.pixel?.live === true
   // A goal's end is armed with its key, before its set (a refused goal ends too); any other look cancels it.
-  const until = scene?.pixel?.until
-  if (until !== undefined && Number.isFinite(until)) armGoalEnd($, until - now)
+  if (scene?.pixel?.goal === true) armGoalEnd($, GOAL_SCENE_MS)
   else stopGoalEnd()
   lookSets += 1
   const mine = lookSets

@@ -194,7 +194,8 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
     same word with the other team's two colors, two fireworks burst in
     those colors (gold and white, on the scoreboard too, when the plugin has no colors for that team), and your fans
     stand still. The scoreboard then shows the two codes again. Each goal plays once, then the stadium is live again
-    at the first reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
+    six seconds after the goal is shown, by a timer, with no reading of the CLI (a slow reading, or the desktop app
+    attaching during the goal, takes nothing from those six seconds). It follows `celebrate`: with `celebrate: off` there is no goal moment for either
     team. With Reduce motion on in your system, nothing moves and the scoreboard stays lit with the two codes.
 
 The scenes are drawn for a dark page: on a light one they are faint. Like the band, they show in the Claude desktop
@@ -444,7 +445,7 @@ team's goal, and the other team's goal takes that team's colors from it too.
 With `teamScene: pixel`, each set of the pixel corner also hands the desktop app the stadium's sound for its state,
 from `hooks/team-scenes.ts` (`pixelSound`): an ambience and a click cue, written as numbers the app makes the sound from,
 never a recording, and the same for every team. It reads nothing and sends nothing off your machine, and the app plays
-it only once you press the speaker in the session's title bar. At the end of a goal's six seconds the plugin sets the
+it only once you press the speaker in the session's title bar. Six seconds after a goal is shown the plugin sets the
 live stadium once by a timer, with no run of the CLI, so the goal's sound ends with it.
 With `teamTheme: off` it calls neither and draws nothing.
 
