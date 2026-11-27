@@ -1,7 +1,8 @@
 /**
  * The team look's scenes (plugin 0.9.0, changed in 0.10.0, 0.11.0 and 0.12.0), as data: the two drawings `teamScene`
- * chooses besides the band, each an SVG source made from its arguments alone. Pure: no host, no clock, no network, no
- * file, and no import. The hooks module decides which scene is set and when; this module only draws it.
+ * chooses besides the band, each an SVG source made from its arguments alone, and (plugin 0.13.0) the pixel corner's
+ * sound. Pure: no host, no clock, no network, no file, and no import. The hooks module decides which scene is set and
+ * when; this module only draws it, and says what it sounds like.
  *
  * - `pitchSvg`: faded pitch lines across the app in the team's main color, and a small scarf hanging at the top right,
  *   in the two colors, with the team's name on it (`scarfName`; no name, no text). It never moves.
@@ -23,6 +24,9 @@
  *   board's codes, word and flash, and a flag scarf's stripes) is turned back about its own middle. A goal's source
  *   ends with `<desc>goal N</desc>`, its stamp: the app does not draw a source it already drew again, so each goal is
  *   its own source.
+ * - `pixelSound` (plugin 0.13.0): the pixel corner's sound for its state, numbers the desktop app makes the sound from
+ *   (no recording): wind while idle, the crowd's murmur while live, the roar at the team's goal, a groan at the other
+ *   side's, and a whistle on a click of the backdrop. The pitch has none.
  *
  * Both are drawn for a dark page: on a light one they are faint. A color that is not six hex digits is never written
  * into a drawing: the main color then is pitch green, for both; a second color that is not six hex digits is the main
@@ -527,4 +531,57 @@ export function pixelSvg(a: {
       : ['<svg x="60%" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMaxYMax meet">', ...corner]),
     `</svg>${state === 'goal' ? `<desc>goal ${stamp}</desc>` : ''}</svg>`,
   ].join('\n')
+}
+
+/**
+ * The pixel corner's sound (plugin 0.13.0): the desktop app's theme sound (a theme set's `sound`, Claude Code
+ * 2.1.330 and later), as numbers the app makes the sound from: layers of noise and tones, never a recording, a chant, a
+ * song or a voice. The app plays it only once the person presses the speaker in the session's title bar, and lets them
+ * turn the ambience off and keep the cue. The ambience follows the corner's state: faint wind while the stadium is
+ * empty (`idle`), the crowd's murmur while the team's match is live, the roar at the team's goal, and a groan at the
+ * other side's (`goal` with `by` exactly `'other'`); every state's cue is a referee's whistle on a click of the
+ * backdrop. The values are the ones the maintainer heard in the app and approved (Nov 23, 2026); a change to one is a
+ * change to what a person hears.
+ */
+const WHISTLE = {
+  layers: [
+    { wave: 'sine', notes: [2_900], gain: 0.25, attack: 0.01, release: 0.25, tremolo: { hz: 28, depth: 0.7 } },
+    { wave: 'sine', notes: [3_000], gain: 0.25, attack: 0.01, release: 0.25, tremolo: { hz: 28, depth: 0.7 } },
+  ],
+} as const
+/** The empty stadium: faint wind. */
+const WIND = {
+  layers: [{ wave: 'pink', drone: true, gain: 0.08, filter: { type: 'lowpass', hz: 350 }, tremolo: { hz: 0.1, depth: 0.6 } }],
+} as const
+/** The team's match in play: the crowd's murmur. */
+const MURMUR = {
+  layers: [
+    { wave: 'brown', drone: true, gain: 0.25, filter: { type: 'lowpass', hz: 500 } },
+    { wave: 'pink', drone: true, gain: 0.12, filter: { type: 'bandpass', hz: 900 }, tremolo: { hz: 0.15, depth: 0.4 } },
+    { wave: 'crackle', scatter: 0.4, gain: 0.08, attack: 0.01, release: 0.4 },
+  ],
+  reverb: 0.4,
+} as const
+/** The team's goal: the roar, the noise rising and the applause's crackle. */
+const ROAR = {
+  layers: [
+    { wave: 'pink', drone: true, gain: 0.6, filter: { type: 'lowpass', hz: 700, to: 3_000 } },
+    { wave: 'brown', drone: true, gain: 0.4 },
+    { wave: 'crackle', scatter: 8, gain: 0.3, attack: 0.005, release: 0.15 },
+  ],
+  reverb: 0.6,
+} as const
+/** The other side's goal: the groan, the noise falling. */
+const GROAN = {
+  layers: [
+    { wave: 'brown', drone: true, gain: 0.3, filter: { type: 'lowpass', hz: 600, to: 200 } },
+    { wave: 'pink', drone: true, gain: 0.06, filter: { type: 'lowpass', hz: 400 } },
+  ],
+  reverb: 0.5,
+} as const
+
+/** The pixel corner's sound for its state (`pixelSvg`'s `state`; anything else is `idle`) and, at a goal, whose it is. */
+export function pixelSound(state: 'live' | 'idle' | 'goal', by?: unknown) {
+  const ambience = state === 'goal' ? (by === 'other' ? GROAN : ROAR) : state === 'live' ? MURMUR : WIND
+  return { ambience, cues: { click: WHISTLE } }
 }

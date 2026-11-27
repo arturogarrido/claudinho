@@ -70,9 +70,9 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the release whose team look is the desktop app\'s, 0.12.3', () => {
+  it('the manifest is the release whose pixel stadium sounds its state, 0.13.0', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.12.3');
+    expect(m.version).toBe('0.13.0');
   });
 
   it('the teamTheme option: off or on, OFF by default (a session holds one theme, and ours would replace the person\'s), and its description says where it shows and what it replaces', () => {
@@ -290,7 +290,7 @@ describe('the plugin directory listing', () => {
     expect(imports.length).toBe((src.match(/^\s*import\b/gm) ?? []).length);
     expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look' && m[3] !== './team-scenes' && m[3] !== './celebration').map((m) => m[3])).toEqual([]);
     const values = imports.filter((m) => !m[1]).flatMap((m) => (m[2] ?? '').split(',').map((v) => v.trim()));
-    expect(values.filter((v) => v !== '').sort()).toEqual(['FRAME_MS', 'FULLTIME_MS', 'GOAL_FRAMES', 'atom', 'bandSvg', 'boardCode', 'buildLook', 'celebrationBall', 'celebrationRow', 'colorsForPick', 'flagForPick', 'goalRow', 'pitchSvg', 'pixelSvg', 'read', 'resultRow', 'update']);
+    expect(values.filter((v) => v !== '').sort()).toEqual(['FRAME_MS', 'FULLTIME_MS', 'GOAL_FRAMES', 'atom', 'bandSvg', 'boardCode', 'buildLook', 'celebrationBall', 'celebrationRow', 'colorsForPick', 'flagForPick', 'goalRow', 'pitchSvg', 'pixelSound', 'pixelSvg', 'read', 'resultRow', 'update']);
     const argv = String.raw`\s*\[\s*(['"][^'"]*['"])\s*,\s*(['"][^'"]*['"])`;
     const runs = [...src.matchAll(new RegExp(String.raw`\$${DOT}process${DOT}run${OPEN}${argv}`, 'g'))];
     expect(runs.length).toBe((src.match(new RegExp(String.raw`\$${DOT}process${DOT}run\b`, 'g')) ?? []).length);

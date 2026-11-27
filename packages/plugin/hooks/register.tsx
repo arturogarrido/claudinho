@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, FsEntry, ProcessRunResult, Register, RenderChildren, Timer } from 'claude-code'
+import type { EngineInterface, FsEntry, ProcessRunResult, Register, RenderChildren, ThemeSound, Timer } from 'claude-code'
 
 import type {
   ClaudinhoBand,
@@ -19,7 +19,7 @@ import type {
 import { FRAME_MS, FULLTIME_MS, GOAL_FRAMES, celebrationBall, celebrationRow, goalRow, resultRow } from './celebration'
 import { bandSvg, buildLook, colorsForPick, flagForPick } from './team-look'
 import type { TeamColors } from './team-look'
-import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
+import { boardCode, pitchSvg, pixelSound, pixelSvg } from './team-scenes'
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
@@ -227,9 +227,29 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   made). A reading that is no view, and a band run with no band surface, count as a view that is not current of the
  *   record's scope, with no next fixture, in the record's look, while the scene last tried (of any scope: an app still
  *   shows it after a pick's change) is the corner live or in a goal: so the hold runs out with no view, and nothing is
- *   set where nothing was. No timer: the first reading after the 6 seconds sets `live`. The key adds the state, the two
- *   codes, the stamp, whose goal it is with the other team's colors, the flag, the goal's word and the place: each
- *   state is set once, and a refused set is not retried per tick.
+ *   set where nothing was. A goal's end has one timer (plugin 0.13.0, `goalEnd`): armed when a goal board's key is
+ *   taken, for six seconds from the first time the goal's stamp is shown (from the set, not from the run's start: a
+ *   slow read or an app attaching late takes nothing from what the app shows), it sets the corner as a reading that is
+ *   no view would (live, inside the hold), so the goal and its sound end with its six seconds; the next reading then
+ *   finds that look and sets nothing. That first set writes the memory's goal end as six seconds from the set, so the
+ *   readings and the timer end a goal by one clock: a reading inside those six seconds keeps the goal. A later set of
+ *   the same goal (its scene redrawn: a code, the pick, the word or the place changed) arms the end for what is left
+ *   of them, never again from the start (`goalShown`). Before 0.13.0 the first reading after the 6
+ *   seconds (counted from the run's start) set `live`. The key adds the state, the two codes, the stamp, whose goal it
+ *   is with the other team's colors, the flag, the goal's word and the place: each state is set once, and a refused
+ *   set is not retried per tick.
+ *
+ * The pixel corner's sound (plugin 0.13.0): each set of the pixel corner carries the desktop app's theme sound for its
+ * board (`pixelSound`, `team-scenes.ts`: numbers the app makes the sound from, no recording; wind while idle, the
+ * crowd's murmur while live, the roar at the pick's goal, a groan at the other side's, a whistle on a click of the
+ * backdrop), which the app plays only once the person presses the speaker in the session's title bar (Claude Code
+ * 2.1.330 and later). The band and the pitch carry none, and `celebrate: off` has no goal board, so no roar or groan;
+ * the roar or the groan ends with the goal's six seconds (`goalEnd`). A set the engine refuses while it carries a sound
+ * (a sound its host check refuses, or a build that refuses the key) is sent once more without it, inside the same try
+ * (still one look per key), unless a newer set, an off, a clear or a start began meanwhile; when that send lands, no
+ * later set of the module's life asks for sound. When it is refused too, it said nothing of sound. An older build that
+ * does not know the key takes the set and drops the sound without a word (measured on Claude Code 2.1.325 and 2.1.328):
+ * the look lands silent, with no second send.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -487,6 +507,35 @@ let lookDrawn = false
 let lookStands = false
 let lookSets = 0
 let lookGen = 0
+/**
+ * Whether this module stopped asking for sound (plugin 0.13.0): set when a set the engine refused while it carried the
+ * pixel corner's sound (a sound its host check refuses, or a build that refuses the key) was sent again without it and
+ * that send landed; from then no set of the module's life carries one. A refusal of both sends says nothing of sound,
+ * and leaves it unset. An older build that drops the key (measured: Claude Code 2.1.325 and 2.1.328 take the set and
+ * drop the sound without a word) lands the look silent, with no second send, and leaves it unset. A reload starts the
+ * module over, so `session.start` does not reset it.
+ */
+let soundDropped = false
+/**
+ * The pixel goal's end (plugin 0.13.0): one timer, armed when `setLook` takes the key of a pixel goal board (before
+ * its set, so a refused goal ends too) for the goal's six seconds (`GOAL_SCENE_MS`) counted from the first time its
+ * stamp is shown (`goalShown`), and the memory's goal end (`until`) written then to the same six seconds from that set
+ * (the clock `setLook` was given, read before the arm); a later set of the same goal (its scene redrawn: a code, the
+ * pick, the word or the place changed) arms it for what is left of them, never again from the start. The goal's
+ * animation runs from its drawing, so a slow read of the score, or an app that attaches inside the goal, takes nothing
+ * from what the app shows, and a reading inside them keeps the goal. Its callback sets the corner as a reading that is
+ * no view would (`lookWithoutView`): the memory's goal is past by then, so the live board is set with its murmur, and
+ * the roar or the groan ends with the six seconds, not at the next reading. Cancelled when a later look's key is
+ * taken, by `/claudinho theme off`, by a clear of ours and by `session.start`: never two armed.
+ */
+let goalEnd: Timer | null = null
+/**
+ * The stamp of the last goal whose six seconds were started (plugin 0.13.0; 0: none yet, stamps are positive and only
+ * grow, `goalStamp`): `setLook` writes a goal's end into the memory only the first time its stamp is shown, and a later
+ * set of the same goal arms `goalEnd` for what is left of them. Never reset (not by `stopGoalEnd`): a goal shown again
+ * after another look keeps its first end, the memory's `until`.
+ */
+let goalShown = 0
 /** The `teamScene` option: `pitch` or `pixel`; null for the band (anything else), set at load. */
 let teamScene: SceneKind | null = null
 /**
@@ -516,9 +565,12 @@ let sceneSerial = 0
  * whether the engine is then called, the look already being that scene, or no app being attached to draw it), the
  * colors and the flag a reading that is no view draws its scene in (`lookWithoutView`). Two writers fill
  * it, both into the record a reading took before its first await, so a write after a forget lands in a record nobody
- * reads: a reading's board (`pixelBoard`: the hold and the goal) and a set asked for (`setLook`: the look). No timer
- * is armed: each reading asks it. The last stamp given (`max(previous + 1, the clock's milliseconds)`, so a reload's
- * stamps are new too) is the module's, outside the record: a stamp is never given twice.
+ * reads: a reading's board (`pixelBoard`: the hold and the goal) and a set asked for (`setLook`: the look, and since
+ * plugin 0.13.0 the end of the goal its scene shows, by its stamp: six seconds from the first set that shows it, when
+ * its key is taken, never after a forget). No timer is armed on it but the goal's end (`goalEnd`, which reads it as a
+ * reading that is no view does, at the end `setLook` wrote): each reading asks it. The last stamp given
+ * (`max(previous + 1, the clock's milliseconds)`, so a reload's stamps are new too) is the module's, outside the
+ * record: a stamp is never given twice.
  */
 type PixelScope = { slug: string; team: string | null }
 type PixelMemory = {
@@ -2260,8 +2312,14 @@ type SceneWant = {
   key: string
   alt: string
   draw: () => string
-  /** The pixel corner's: the memory it was made from, and whether it is live (or goal). */
-  pixel?: { mem: PixelMemory; live: boolean }
+  /**
+   * The pixel corner's: the memory it was made from, whether it is live (or goal), and for a goal board the goal's
+   * stamp (`goal`, which arms `goalEnd`; the first time a stamp is shown it sets that goal's end, six seconds from
+   * then, and a later set of the same goal arms the end for what is left of them, never again from the start).
+   */
+  pixel?: { mem: PixelMemory; live: boolean; goal?: number }
+  /** The pixel corner's sound for its board (plugin 0.13.0, `pixelSound`); the band and the pitch have none. */
+  sound?: ThemeSound
 }
 
 /** The colors a scene is drawn in: the look's two (none: pitch green). */
@@ -2275,7 +2333,8 @@ function sceneColors(want: LookWant): { main: string; second?: string } {
  * goal it is with the other team's colors, the look's flag, and since plugin 0.12.0 the goal's word and the corner's
  * place, so two languages or two places are never one scene) and its drawing: the look's colors, the board, the flag as
  * the scarf, at a goal its word, at the other side's goal its kind and that team's colors, and the place
- * (`teamScenePlace`).
+ * (`teamScenePlace`); and (plugin 0.13.0) its sound, from the board's state and whose goal it is (`pixelSound`), both
+ * of which the key holds, so the sound changes only where the scene does.
  */
 function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
   const colors = sceneColors(want)
@@ -2301,7 +2360,12 @@ function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
         ...(word !== null ? { word } : {}),
         place,
       }),
-    pixel: { mem, live: board.state !== 'idle' },
+    pixel: {
+      mem,
+      live: board.state !== 'idle',
+      ...(board.state === 'goal' ? { goal: board.stamp } : {}),
+    },
+    sound: pixelSound(board.state, by),
   }
 }
 
@@ -2333,6 +2397,21 @@ function sceneName(kind: SceneKind, now: number): string {
 /** A scene kept for the `Backdrop` hook, newest last, the oldest dropped past `SCENES_KEPT`. */
 function keepScene(entry: SceneEntry): void {
   scenes = [...scenes.filter((s) => s.name !== entry.name), entry].slice(-SCENES_KEPT)
+}
+
+/** The pixel goal's end cancelled (`goalEnd`). */
+function stopGoalEnd(): void {
+  goalEnd?.cancel()
+  goalEnd = null
+}
+
+/** The pixel goal's end armed `ms` from now (`goalEnd`), the one armed before cancelled. */
+function armGoalEnd($: EngineInterface, ms: number): void {
+  stopGoalEnd()
+  goalEnd = $.clock.after(Math.min(Math.max(0, ms), TIMER_MAX_MS), () => {
+    goalEnd = null
+    void lookWithoutView($)
+  })
 }
 
 /** A scene whose set the engine refused, no longer drawn. */
@@ -2371,6 +2450,7 @@ async function clearOurLook($: EngineInterface): Promise<void> {
   const kept = scenes
   scenes = []
   lookStands = false
+  stopGoalEnd()
   lookGen += 1
   const gen = lookGen
   try {
@@ -2459,6 +2539,14 @@ async function lookWithoutView($: EngineInterface): Promise<void> {
  * notes its look in that memory (the memory's second writer), unless the look is off, a set made since won (`over`)
  * or the memory was forgotten: when the scene is already the look last tried, when no app is attached to draw it, and
  * before a set. Whether the look last tried is our corner live or in a goal (`lookLive`) is written with its key.
+ * A pixel goal board's key arms the goal's end (`goalEnd`) before the set, so a refused goal ends too: six seconds from
+ * the first time its stamp is shown, and for a later set of the same goal (its scene redrawn) what is left of them,
+ * never again from the start; any other key cancels it. A pixel scene's set carries its sound (plugin 0.13.0) until the module drops sound (`soundDropped`).
+ * When the engine refuses that set (it throws), the same look (the same scene's name, under the same key: still one
+ * look) is sent once more without the sound, only while the look is not off and no set, off, clear or start began and
+ * no forget came meanwhile; else the look is a refusal, its scene dropped. Sound is dropped for the module's life only
+ * when that second send lands; when it throws too, nothing is set (its scene dropped) and the next look asks for sound
+ * again. A build that drops the key without a word lands the look silent, with no second send.
  * May reject (its callers catch).
  */
 async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | null, now: number, over?: string): Promise<void> {
@@ -2485,6 +2573,23 @@ async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | nu
   if (key === lookKey) return
   lookKey = key
   lookLive = scene?.pixel?.live === true
+  // A goal's end is armed with its key, before its set (a refused goal ends too). The memory's goal (the one this scene
+  // shows, by its stamp) ends six seconds after the first time its stamp is shown (`goalShown`), so a reading inside
+  // them keeps it; a later set of the same goal (its scene redrawn: a code, the pick, the word or the place changed)
+  // arms the end for what is left of them, never again from the start. Any other look cancels it.
+  const shown = scene?.pixel?.goal
+  if (shown !== undefined) {
+    const g = scene?.pixel?.mem.goal
+    let ms = GOAL_SCENE_MS
+    if (g != null && g.stamp === shown) {
+      if (shown !== goalShown) {
+        goalShown = shown
+        g.until = now + GOAL_SCENE_MS
+      }
+      ms = g.until - now
+    }
+    armGoalEnd($, ms)
+  } else stopGoalEnd()
   lookSets += 1
   const mine = lookSets
   const gen = lookGen
@@ -2497,9 +2602,22 @@ async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | nu
       entry = { name: sceneName(scene.kind, now), source: scene.draw(), alt: scene.alt }
       keepScene(entry)
     }
-    const answer: unknown = await $.theme.set(
-      entry === null ? look : { colors: look.colors, backdrop: { scene: entry.name, glass: { ...SCENE_GLASS } } },
-    )
+    const args = entry === null ? look : { colors: look.colors, backdrop: { scene: entry.name, glass: { ...SCENE_GLASS } } }
+    const sound = soundDropped ? undefined : scene?.sound
+    let answer: unknown
+    if (sound === undefined) answer = await $.theme.set(args)
+    else {
+      try {
+        answer = await $.theme.set({ ...args, sound })
+      } catch (refused) {
+        // Refused while it carried a sound (a sound the host check refuses, or a build that refuses the key): the same
+        // look once more without it, unless a set, an off, a clear or a start began meanwhile, or the pixel memory was
+        // forgotten (then this look is a refusal). Sound is dropped only when that send lands.
+        if ((await lookIsOff($)) || mine !== lookSets || gen !== lookGen || forgotten()) throw refused
+        answer = await $.theme.set(args)
+        soundDropped = true
+      }
+    }
     set = true
     drawn = isObject(answer) && answer.isDrawn === true
   } catch {
@@ -2523,6 +2641,7 @@ async function turnLookOff($: EngineInterface): Promise<void> {
   await writeLookOff($, true)
   lookKey = null
   lookLive = false
+  stopGoalEnd()
   forgetPixel()
   lookDrawn = false
   lookSets += 1
@@ -2858,6 +2977,7 @@ export const register: Register = (on, options) => {
     lookStands = false
     lookSets += 1
     lookGen += 1
+    stopGoalEnd()
     // The pixel corner's memory: a match seen before the start is not this session's.
     forgetPixel()
     // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start

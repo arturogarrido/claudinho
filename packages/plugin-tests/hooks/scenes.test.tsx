@@ -659,7 +659,8 @@ describe('the pixel corner: whose match it is, and what it remembers', () => {
     const { sets } = engine(on, (n) => n > 1)
     const { clock } = await world($, on, [live([0, 0]), new Error('spawn claudinho ENOENT')], DESKTOP)
     for (let i = 0; i < 60; i += 1) await clock.advance(15_000)
-    expect(sets).toHaveLength(2)
+    // Since 0.13.0 one try is two sends: the look with its sound, then (refused) the same look without it.
+    expect(sets).toHaveLength(3)
   })
 
   test('a new session forgets the match: a first view that is not current is idle, and a goal from before is not played again', PIXEL, async ($, on) => {
@@ -919,19 +920,22 @@ describe('the pixel corner: a live stadium is always noted, so it always ends', 
 })
 
 describe('sets the engine refuses, names, the off and a reload', () => {
-  test('a refused set is not tried again per tick: every set refused, a goal and twenty ticks make at most three attempts', PIXEL, async ($, on) => {
+  test('a refused set is not tried again per tick: every set refused, a goal and twenty ticks make at most three tries', PIXEL, async ($, on) => {
     const { sets } = engine(on, () => true)
     const { clock } = await world($, on, [live([0, 0]), live([0, 1])], DESKTOP)
     for (let i = 0; i < 20; i += 1) await clock.advance(15_000)
-    expect(sets.length).toBeGreaterThanOrEqual(2)
-    expect(sets.length).toBeLessThanOrEqual(3)
+    // Since 0.13.0 a try is two sends (with its sound, then without), and a refused try without it keeps the sound on.
+    expect(sets.length).toBeGreaterThanOrEqual(4)
+    expect(sets.length).toBeLessThanOrEqual(6)
   })
 
   test('a drawn set, then a refused one: the app still shows the first, and our hook still draws it', PIXEL, async ($, on) => {
-    const { sets } = engine(on, (n) => n === 2)
+    // The second look refused with its sound and without it (since 0.13.0 a try is those two sends).
+    const { sets } = engine(on, (n) => n === 2 || n === 3)
     const { clock } = await world($, on, [live([0, 0]), view(LINE, { current: true, ...NEXT_LIV })], DESKTOP)
     await clock.advance(15_000)
-    expect(sets).toHaveLength(2)
+    expect(sets).toHaveLength(3)
+    expect(sceneOf(sets[2])).toBe(sceneOf(sets[1]))
     expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
     expect(await drawn($, sceneOf(sets[1]))).toBe(undefined)
   })
@@ -1268,12 +1272,13 @@ describe('the pixel corner: the flag scarf and both sides\' goals, as the hooks 
     expect(sets).toHaveLength(2)
   })
 
-  test('the other side\'s goal, every set refused: twenty ticks make at most three attempts', PIXEL, async ($, on) => {
+  test('the other side\'s goal, every set refused: twenty ticks make at most three tries', PIXEL, async ($, on) => {
     const { sets } = engine(on, () => true)
     const { clock } = await world($, on, [nations([0, 0]), nations([1, 0])], DESKTOP)
     for (let i = 0; i < 20; i += 1) await clock.advance(15_000)
-    expect(sets.length).toBeGreaterThanOrEqual(2)
-    expect(sets.length).toBeLessThanOrEqual(3)
+    // Two sends a try since 0.13.0, as above.
+    expect(sets.length).toBeGreaterThanOrEqual(4)
+    expect(sets.length).toBeLessThanOrEqual(6)
   })
 
   test('two goals, one by each side: two goal sets under two stamps, the second the pick\'s', PIXEL, async ($, on) => {
@@ -1281,9 +1286,11 @@ describe('the pixel corner: the flag scarf and both sides\' goals, as the hooks 
     const { clock } = await world($, on, [nations([0, 0]), nations([1, 0]), nations([1, 1])], DESKTOP)
     await clock.advance(15_000)
     await clock.advance(15_000)
-    expect(sets).toHaveLength(3)
+    // Since 0.13.0 the first goal ends by a timer six seconds on (live), before the second goal's reading.
+    expect(sets).toHaveLength(4)
     const first = (await drawn($, sceneOf(sets[1]))) as string
-    const second = (await drawn($, sceneOf(sets[2]))) as string
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' }))
+    const second = (await drawn($, sceneOf(sets[3]))) as string
     expect(first).toBe(pixelSvg({ ...ITA, ...NATIONS, ...BEL_OTHER, state: 'goal', stamp: stampOf(first) } as Parameters<typeof pixelSvg>[0]))
     expect(second).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(second) }))
     expect(stampOf(second)).toBeGreaterThan(stampOf(first))
@@ -1510,8 +1517,9 @@ describe('the pixel corner: which side is the pick\'s, the band\'s own rule', ()
     const first = (await drawn($, sceneOf(sets[1]))) as string
     expect(first).toBe(pixelSvg({ ...ITA, state: 'goal', home: 'ITA', away: 'ITA', scarf: IT_FLAG, stamp: stampOf(first), by: 'other' } as Parameters<typeof pixelSvg>[0]))
     await clock.advance(15_000)
-    expect(sets).toHaveLength(3)
-    const second = (await drawn($, sceneOf(sets[2]))) as string
+    // The first goal ended by its timer (live) before this reading (since 0.13.0).
+    expect(sets).toHaveLength(4)
+    const second = (await drawn($, sceneOf(sets[3]))) as string
     expect(second).toBe(pixelSvg({ ...ITA, state: 'goal', home: 'ITA', away: 'ITA', scarf: IT_FLAG, stamp: stampOf(second) }))
   })
 })

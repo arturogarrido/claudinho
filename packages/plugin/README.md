@@ -194,11 +194,22 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
     same word with the other team's two colors, two fireworks burst in
     those colors (gold and white, on the scoreboard too, when the plugin has no colors for that team), and your fans
     stand still. The scoreboard then shows the two codes again. Each goal plays once, then the stadium is live again
-    at the first reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
+    six seconds after the goal is first shown, by a timer, with no reading of the CLI (a slow reading, the desktop app
+    attaching during the goal, or the scene redrawn during it, takes nothing from those six seconds and adds nothing
+    to them). It follows `celebrate`: with `celebrate: off` there is no goal moment for either
     team. With Reduce motion on in your system, nothing moves and the scoreboard stays lit with the two codes.
 
 The scenes are drawn for a dark page: on a light one they are faint. Like the band, they show in the Claude desktop
 app (in a test on Nov 22, 2026, the Claude mobile app showed neither the colors nor a scene). Changing the scene in `/config` reloads the plugin, and the next reading sets the new one.
+
+**The stadium's sound** (plugin 0.13.0): with `teamScene: pixel`, the stadium also sounds its state in the Claude
+desktop app on Claude Code 2.1.330 or later, once you press the speaker in the session's title bar (the speaker is the
+opt-in: nothing plays until you press it): a crowd's murmur while your team's match is live, a roar at your team's
+goal, a groan at the other team's, faint wind while the stadium is empty, and a referee's whistle when you click the
+backdrop. With `celebrate: off` there is no goal moment, so no roar or groan. The app makes the sound itself from
+numbers the plugin hands it (noise and tones), never a recording. The band and the pitch have no sound, and nothing
+plays in the terminal, an editor or the mobile app. The app lets you turn the background sound off and keep the
+whistle. On an older Claude Code the stadium is set without its sound.
 
 ## Where it works
 
@@ -432,6 +443,11 @@ both from the CLI's answer the plugin already read, and at a goal the goal word 
 when it names none). The pixel corner's scarf,
 for a national team, takes its flag's colors from the same file; so do the scoreboard's stripes at your national
 team's goal, and the other team's goal takes that team's colors from it too.
+With `teamScene: pixel`, each set of the pixel corner also hands the desktop app the stadium's sound for its state,
+from `hooks/team-scenes.ts` (`pixelSound`): an ambience and a click cue, written as numbers the app makes the sound from,
+never a recording, and the same for every team. It reads nothing and sends nothing off your machine, and the app plays
+it only once you press the speaker in the session's title bar. Six seconds after a goal is shown the plugin sets the
+live stadium once by a timer, with no run of the CLI, so the goal's sound ends with it.
 With `teamTheme: off` it calls neither and draws nothing.
 
 ## Data and disclaimer

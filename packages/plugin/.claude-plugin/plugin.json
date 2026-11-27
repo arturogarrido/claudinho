@@ -1,6 +1,6 @@
 {
   "name": "claudinho",
-  "version": "0.12.3",
+  "version": "0.13.0",
   "description": "Your Claude Code celebrates when your team scores: a toast with the scorer, a short celebration with the Claude mascot, and the score above your prompt. Follow a competition and pin your team with the claudinho CLI on your machine, then open any match's goals and cards with /claudinho match. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "author": {
     "name": "Arturo Garrido"
@@ -49,7 +49,7 @@
       "title": "Team look scene",
       "options": ["band", "pitch", "pixel"],
       "default": "band",
-      "description": "What the team look draws behind the conversation; needs Team look on. band: a band of your team's colors across the top. pitch: faded pitch lines and a small scarf with your team's name. pixel: a pixel-art stadium corner whose scoreboard shows the two codes of your team's match or next fixture (blank when neither is known), with fans while your team plays (a national team's fan holds a scarf in its flag's colors) and a short goal moment when either team scores, the scoreboard flashing the goal word in the plugin's language (GOOOAL, GOOOL, BUUUT) and the scoring team's colors (none with Goal celebration off). Drawn for a dark page; shows in the Claude desktop app (in a test on Nov 22, 2026, the Claude mobile app showed none)."
+      "description": "What the team look draws behind the conversation; needs Team look on. band: a band of your team's colors across the top. pitch: faded pitch lines and a small scarf with your team's name. pixel: a pixel-art stadium corner whose scoreboard shows the two codes of your team's match or next fixture (blank when neither is known), with fans while your team plays (a national team's fan holds a scarf in its flag's colors) and a short goal moment when either team scores, the scoreboard flashing the goal word in the plugin's language (GOOOAL, GOOOL, BUUUT) and the scoring team's colors (none with Goal celebration off). In the Claude desktop app (Claude Code 2.1.330 and later) the pixel stadium also has a sound, made by the app from numbers, never a recording, once you turn on the speaker in the session's title bar: a crowd's murmur while your team plays, a roar at its goal, a groan at the other side's, wind while the stadium is empty, and a whistle when you click it. Drawn for a dark page; shows in the Claude desktop app (in a test on Nov 22, 2026, the Claude mobile app showed none)."
     },
     "teamScenePlace": {
       "type": "string",
