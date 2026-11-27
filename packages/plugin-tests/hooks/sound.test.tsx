@@ -7,8 +7,10 @@ import { liveRecord, momentView, view, world } from './world'
  * look carries the desktop app's theme sound for the stadium's state (wind while idle, the murmur while the pinned
  * team's match is live, the roar at its goal, a groan at the other side's), each with a whistle on a click of the
  * backdrop; the app plays it once the person presses the speaker in the session's title bar. The band and the pitch
- * carry none. A build whose `$.theme.set` refuses `sound` (before Claude Code 2.1.330) is sent the same look once more
- * without it, and no later set of the module's life asks for sound.
+ * carry none, and a goal's sound ends with the goal's six seconds, by a timer, not at the next reading. A set the
+ * engine refuses while it carries a sound is sent the same look once more without it, and when that send lands no later
+ * set of the module's life asks for sound. (Measured: Claude Code 2.1.325 and 2.1.328 take a set with `sound` and drop
+ * the sound without a word, so the look lands silent there; the engine refuses a sound out of range by its host check.)
  *
  * The kit's engine runs its host check on a set's arguments before the stub below answers, so a set the stub records
  * was taken by that check: a sound out of range never reaches it. What the app plays, and whether it thinks a sound
@@ -96,6 +98,81 @@ describe('the pixel stadium sounds its state', () => {
   })
 })
 
+describe('the goal\'s sound ends with the goal\'s six seconds, with no reading', () => {
+  test('the roar, then six seconds on, the murmur before the next reading; that reading sets nothing more', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(sets[1]?.sound).toEqual(GOAL_SOUND)
+    await clock.advance(6_000)
+    expect(sets).toHaveLength(3)
+    expect(sets[2]?.sound).toEqual(LIVE_SOUND)
+    await clock.advance(9_000)
+    expect(sets).toHaveLength(3)
+  })
+
+  test('the other side\'s groan ends the same way', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), live([1, 0]), live([1, 0])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets[1]?.sound).toEqual(OTHER_GOAL_SOUND)
+    await clock.advance(6_000)
+    expect(sets).toHaveLength(3)
+    expect(sets[2]?.sound).toEqual(LIVE_SOUND)
+  })
+
+  test('the CLI fails after the goal (its next reading a minute away): the murmur at six seconds all the same, then nothing more', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), live([0, 1]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await clock.advance(6_000)
+    expect(sets).toHaveLength(3)
+    expect(sets[2]?.sound).toEqual(LIVE_SOUND)
+    await clock.advance(54_000)
+    expect(sets).toHaveLength(3)
+  })
+
+  test('the look turned off inside the six seconds: nothing is set when they end', PIXEL, async ($, on) => {
+    const sets: SetArgs[] = []
+    const clears: number[] = []
+    on('theme.set', (_$, e) => {
+      sets.push(JSON.parse(JSON.stringify(e)) as SetArgs)
+      return { value: { isDrawn: true, requestId: 'theme' } }
+    })
+    on('theme.clear', () => {
+      clears.push(1)
+      return { value: { isDrawn: false, reason: 'cleared' } }
+    })
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1]), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await clock.advance(2_000)
+    await command('theme off')
+    expect(clears).toHaveLength(1)
+    await clock.advance(4_000)
+    expect(sets).toHaveLength(2)
+  })
+
+  test('a goal set the engine refuses still ends: the murmur is set at six seconds', PIXEL, async ($, on) => {
+    // The goal's two sends (with its sound, then without) refused; every other set taken.
+    const sets: SetArgs[] = []
+    on('theme.set', (_$, e) => {
+      sets.push(JSON.parse(JSON.stringify(e)) as SetArgs)
+      if (sets.length === 2 || sets.length === 3) return { deny: 'theme.set denied' }
+      return { value: { isDrawn: true, requestId: 'theme' } }
+    })
+    on('theme.clear', () => ({ value: { isDrawn: false, reason: 'cleared' } }))
+    const { clock } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+    await clock.advance(6_000)
+    expect(sets).toHaveLength(4)
+    expect(sets[3]?.sound).toEqual(LIVE_SOUND)
+  })
+})
+
 describe('the stadium empties with no readable view', () => {
   test('live, then the CLI fails past the hold: idle, the wind', PIXEL, async ($, on) => {
     const { sets } = engine(on)
@@ -151,6 +228,25 @@ describe('a build that does not take sound', () => {
     await world($, on, [live([0, 0]), live([0, 0])], DESKTOP)
     expect(replies).toHaveLength(1)
     expect(sets).toHaveLength(1)
+  })
+
+  test('a newer look set while the refused one was out (the command\'s reading, the match over): the older look is not sent again', PIXEL, async ($, on) => {
+    // The band's live stadium is out with its sound when `/claudinho` reads the match over and sets the idle stadium;
+    // then the live one is refused. Sending it again without its sound would put the old stadium over the newer.
+    const sets: SetArgs[] = []
+    on('theme.set', async (_$, e) => {
+      sets.push(JSON.parse(JSON.stringify(e)) as SetArgs)
+      if (sets.length === 1) {
+        await $.command.run({ command: 'claudinho', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+        return { deny: 'theme.set denied' }
+      }
+      return { value: { isDrawn: true, requestId: 'theme' } }
+    })
+    on('theme.clear', () => ({ value: { isDrawn: false, reason: 'cleared' } }))
+    await world($, on, [live([0, 0]), view(LINE, { current: true })], DESKTOP)
+    expect(sets).toHaveLength(2)
+    expect(sets[0]?.sound).toEqual(LIVE_SOUND)
+    expect(sets[1]?.sound).toEqual(IDLE_SOUND)
   })
 
   test('the look is sent once more without it, and every later set carries none', PIXEL, async ($, on) => {
