@@ -251,25 +251,28 @@ describe('a goal\'s six seconds belong to the goal, not to its scene: a scene th
     })
   }
 
-  test('the app detached and attached again inside the six seconds: the goal is shown again, and still ends six seconds after it was first shown', PIXEL, async ($, on) => {
+  test('the app detached and attached again inside the six seconds, a side\'s code corrected meanwhile: the goal is set again on the attach, and still ends six seconds after it was first shown', PIXEL, async ($, on) => {
+    // The attach's reading brings the corrected code, so the goal's scene has a new key and is set again (a new set,
+    // asserted), under the goal's first end: what the plugin keeps of a goal across the app leaving and coming back.
+    const corrected = momentView([liveRecord([0, 1], { home: { code: 'LSK', name: 'LASK Linz', id: 'espn:1886' } })])
     const { sets } = engine(on)
-    const { clock, attach, detach, command } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1]), live([0, 1]), live([0, 1])], DESKTOP)
+    const { clock, attach, detach } = await world($, on, [live([0, 0]), live([0, 1]), corrected, corrected], DESKTOP)
     await clock.advance(15_000)
     expect(sets).toHaveLength(2)
     expect(sets[1]?.sound).toEqual(GOAL_SOUND)
     await clock.advance(1_000)
     await detach('desktop')
+    expect(sets).toHaveLength(2)
     await clock.advance(1_500)
     await attach('desktop', 'd2')
-    await command('')
-    const goalAgain = sets.findLastIndex((s) => JSON.stringify(s.sound) === JSON.stringify(GOAL_SOUND))
-    const shownAgain = sets.length
-    expect(goalAgain).toBe(shownAgain - 1)
+    expect(sets).toHaveLength(3)
+    expect(sets[2]?.sound).toEqual(GOAL_SOUND)
+    expect(sets[2]?.backdrop?.scene).not.toBe(sets[1]?.backdrop?.scene)
     await clock.advance(3_400)
-    expect(sets).toHaveLength(shownAgain)
+    expect(sets).toHaveLength(3)
     await clock.advance(200)
-    expect(sets).toHaveLength(shownAgain + 1)
-    expect(sets[shownAgain]?.sound).toEqual(LIVE_SOUND)
+    expect(sets).toHaveLength(4)
+    expect(sets[3]?.sound).toEqual(LIVE_SOUND)
   })
 
   test('a second goal inside the first one\'s six seconds still gets six seconds of its own', PIXEL, async ($, on) => {
