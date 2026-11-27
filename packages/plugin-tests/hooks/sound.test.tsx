@@ -1,6 +1,6 @@
 import { describe, expect, test, type TestBody } from 'claude-code/testing'
 import { GOAL_SOUND, IDLE_SOUND, LIVE_SOUND, OTHER_GOAL_SOUND } from './sound.approved'
-import { liveRecord, momentView, view, world } from './world'
+import { held, liveRecord, momentView, view, world } from './world'
 
 /**
  * The pixel stadium's sound (plugin 0.13.0): under `teamTheme: on` and `teamScene: pixel`, each set of the stadium's
@@ -110,6 +110,22 @@ describe('the goal\'s sound ends with the goal\'s six seconds, with no reading',
     expect(sets[2]?.sound).toEqual(LIVE_SOUND)
     await clock.advance(9_000)
     expect(sets).toHaveLength(3)
+  })
+
+  test('a slow score read (1.5 s) takes nothing from the six seconds: they are counted from the goal\'s set', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, release } = await world($, on, [live([0, 0]), held(live([0, 1])), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+    await clock.advance(1_499)
+    await release()
+    expect(sets).toHaveLength(2)
+    expect(sets[1]?.sound).toEqual(GOAL_SOUND)
+    await clock.advance(5_800)
+    expect(sets).toHaveLength(2)
+    await clock.advance(300)
+    expect(sets).toHaveLength(3)
+    expect(sets[2]?.sound).toEqual(LIVE_SOUND)
   })
 
   test('the other side\'s groan ends the same way', PIXEL, async ($, on) => {
