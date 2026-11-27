@@ -1286,9 +1286,11 @@ describe('the pixel corner: the flag scarf and both sides\' goals, as the hooks 
     const { clock } = await world($, on, [nations([0, 0]), nations([1, 0]), nations([1, 1])], DESKTOP)
     await clock.advance(15_000)
     await clock.advance(15_000)
-    expect(sets).toHaveLength(3)
+    // Since 0.13.0 the first goal ends by a timer six seconds on (live), before the second goal's reading.
+    expect(sets).toHaveLength(4)
     const first = (await drawn($, sceneOf(sets[1]))) as string
-    const second = (await drawn($, sceneOf(sets[2]))) as string
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' }))
+    const second = (await drawn($, sceneOf(sets[3]))) as string
     expect(first).toBe(pixelSvg({ ...ITA, ...NATIONS, ...BEL_OTHER, state: 'goal', stamp: stampOf(first) } as Parameters<typeof pixelSvg>[0]))
     expect(second).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(second) }))
     expect(stampOf(second)).toBeGreaterThan(stampOf(first))
@@ -1515,8 +1517,9 @@ describe('the pixel corner: which side is the pick\'s, the band\'s own rule', ()
     const first = (await drawn($, sceneOf(sets[1]))) as string
     expect(first).toBe(pixelSvg({ ...ITA, state: 'goal', home: 'ITA', away: 'ITA', scarf: IT_FLAG, stamp: stampOf(first), by: 'other' } as Parameters<typeof pixelSvg>[0]))
     await clock.advance(15_000)
-    expect(sets).toHaveLength(3)
-    const second = (await drawn($, sceneOf(sets[2]))) as string
+    // The first goal ended by its timer (live) before this reading (since 0.13.0).
+    expect(sets).toHaveLength(4)
+    const second = (await drawn($, sceneOf(sets[3]))) as string
     expect(second).toBe(pixelSvg({ ...ITA, state: 'goal', home: 'ITA', away: 'ITA', scarf: IT_FLAG, stamp: stampOf(second) }))
   })
 })
