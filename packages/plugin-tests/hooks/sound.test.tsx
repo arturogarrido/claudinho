@@ -145,6 +145,23 @@ describe('the goal\'s sound ends with the goal\'s six seconds, with no reading',
     expect(sets[1]?.sound).toEqual(LIVE_SOUND)
   })
 
+  test('a reading inside the six seconds of a goal shown late (the app attached, then /claudinho, the same score): the goal stands to its six seconds', PIXEL, async ($, on) => {
+    // The readings and the timer end a goal by one clock: six seconds from its set.
+    const { sets } = engine(on)
+    const { clock, attach, command } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1]), live([0, 1]), live([0, 1]), live([0, 1])])
+    await clock.advance(15_000)
+    await clock.advance(2_000)
+    await attach('desktop', 'd1')
+    expect(sets).toHaveLength(1)
+    expect(sets[0]?.sound).toEqual(GOAL_SOUND)
+    await clock.advance(4_500)
+    await command('')
+    expect(sets).toHaveLength(1)
+    await clock.advance(1_700)
+    expect(sets).toHaveLength(2)
+    expect(sets[1]?.sound).toEqual(LIVE_SOUND)
+  })
+
   test('the other side\'s groan ends the same way', PIXEL, async ($, on) => {
     const { sets } = engine(on)
     const { clock } = await world($, on, [live([0, 0]), live([1, 0]), live([1, 0])], DESKTOP)
