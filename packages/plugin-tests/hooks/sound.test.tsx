@@ -223,6 +223,73 @@ describe('the goal\'s sound ends with the goal\'s six seconds, with no reading',
   })
 })
 
+describe('a goal\'s six seconds belong to the goal, not to its scene: a scene that changes inside them ends with them', () => {
+  // The pixel scene's key holds the board's two codes and the look's key (the pick's name and colors), each of which a
+  // reading inside the six seconds can change while the goal stays the same goal (one stamp): the goal ends six
+  // seconds after it was first shown, whatever is redrawn meanwhile.
+  const corrections: Array<[string, string]> = [
+    ['the home side\'s code corrected (LAS to LSK)', momentView([liveRecord([0, 1], { home: { code: 'LSK', name: 'LASK Linz', id: 'espn:1886' } })])],
+    ['the away side\'s code corrected (LIV to LFC)', momentView([liveRecord([0, 1], { away: { code: 'LFC', name: 'Liverpool', id: 'espn:364' } })])],
+    ['the pick\'s name corrected (Liverpool to Liverpool FC)', momentView([liveRecord([0, 1])], [], { pick: { id: 'espn:364', code: 'LIV', name: 'Liverpool FC' } })],
+  ]
+  for (const [what, corrected] of corrections) {
+    test(`${what} 2.5 s into the goal: the goal redrawn, then the murmur at six seconds from its first set`, PIXEL, async ($, on) => {
+      const { sets } = engine(on)
+      const { clock, command } = await world($, on, [live([0, 0]), live([0, 1]), corrected, corrected], DESKTOP)
+      await clock.advance(15_000)
+      expect(sets).toHaveLength(2)
+      expect(sets[1]?.sound).toEqual(GOAL_SOUND)
+      await clock.advance(2_500)
+      await command('')
+      expect(sets).toHaveLength(3)
+      expect(sets[2]?.sound).toEqual(GOAL_SOUND)
+      await clock.advance(3_400)
+      expect(sets).toHaveLength(3)
+      await clock.advance(200)
+      expect(sets).toHaveLength(4)
+      expect(sets[3]?.sound).toEqual(LIVE_SOUND)
+    })
+  }
+
+  test('the app detached and attached again inside the six seconds: the goal is shown again, and still ends six seconds after it was first shown', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, attach, detach, command } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1]), live([0, 1]), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(sets[1]?.sound).toEqual(GOAL_SOUND)
+    await clock.advance(1_000)
+    await detach('desktop')
+    await clock.advance(1_500)
+    await attach('desktop', 'd2')
+    await command('')
+    const goalAgain = sets.findLastIndex((s) => JSON.stringify(s.sound) === JSON.stringify(GOAL_SOUND))
+    const shownAgain = sets.length
+    expect(goalAgain).toBe(shownAgain - 1)
+    await clock.advance(3_400)
+    expect(sets).toHaveLength(shownAgain)
+    await clock.advance(200)
+    expect(sets).toHaveLength(shownAgain + 1)
+    expect(sets[shownAgain]?.sound).toEqual(LIVE_SOUND)
+  })
+
+  test('a second goal inside the first one\'s six seconds still gets six seconds of its own', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    // The second goal is seen by a run the band's pace does not start: a second desktop window attaching.
+    const { clock, attach } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 2]), live([0, 2])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets[1]?.sound).toEqual(GOAL_SOUND)
+    await clock.advance(3_000)
+    await attach('desktop', 'd2')
+    expect(sets).toHaveLength(3)
+    expect(sets[2]?.sound).toEqual(GOAL_SOUND)
+    await clock.advance(5_898)
+    expect(sets).toHaveLength(3)
+    await clock.advance(200)
+    expect(sets).toHaveLength(4)
+    expect(sets[3]?.sound).toEqual(LIVE_SOUND)
+  })
+})
+
 describe('the stadium empties with no readable view', () => {
   test('live, then the CLI fails past the hold: idle, the wind', PIXEL, async ($, on) => {
     const { sets } = engine(on)
