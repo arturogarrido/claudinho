@@ -28,6 +28,7 @@ Claude Code with `--plugin-dir <folder>`, or name the folder in `CLAUDE_CODE_PLU
 | `/demo left` | the stadium at the bottom left, mirrored (the plugin's `teamScenePlace: left`), from then on; shows it live |
 | `/demo right` | the stadium at the bottom right again (the default); shows it live |
 | `/demo en` (or `es`, `pt`, `fr`) | the goal's word on the scoreboard from then on: `GOAL!` (GOOOAL), `¡GOL!` and `GOL!` (GOOOL), `BUT !` (BUUUT); `/demo goal` shows it |
+| `/demo sound` (and `/demo sound off`) | the stadium's sound from then on, as the plugin sets it with `teamScene: pixel` (Claude Code 2.1.330 and later): wind while idle, the crowd's murmur while live, the roar at the team's goal, a groan at the other side's, a whistle on a click of the backdrop; not for the band or the pitch. It shows the live stadium at once; press the speaker in the session's title bar to hear it. A build that refuses the sound gets the look without it, and the reply says why. `sound off` shows the live stadium again, silent |
 | `/demo off` | clears the look, and ends a celebration that is playing |
 
 If the real plugin's team look is on in that session, type `/claudinho theme off` first: a session holds one look.

@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, FsEntry, ProcessRunResult, Register, RenderChildren, Timer } from 'claude-code'
+import type { EngineInterface, FsEntry, ProcessRunResult, Register, RenderChildren, ThemeSound, Timer } from 'claude-code'
 
 import type {
   ClaudinhoBand,
@@ -19,7 +19,7 @@ import type {
 import { FRAME_MS, FULLTIME_MS, GOAL_FRAMES, celebrationBall, celebrationRow, goalRow, resultRow } from './celebration'
 import { bandSvg, buildLook, colorsForPick, flagForPick } from './team-look'
 import type { TeamColors } from './team-look'
-import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
+import { boardCode, pitchSvg, pixelSound, pixelSvg } from './team-scenes'
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
@@ -230,6 +230,15 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   set where nothing was. No timer: the first reading after the 6 seconds sets `live`. The key adds the state, the two
  *   codes, the stamp, whose goal it is with the other team's colors, the flag, the goal's word and the place: each
  *   state is set once, and a refused set is not retried per tick.
+ *
+ * The pixel corner's sound (plugin 0.13.0): each set of the pixel corner carries the desktop app's theme sound for its
+ * board (`pixelSound`, `team-scenes.ts`: numbers the app makes the sound from, no recording; wind while idle, the
+ * crowd's murmur while live, the roar at the pick's goal, a groan at the other side's, a whistle on a click of the
+ * backdrop), which the app plays only once the person presses the speaker in the session's title bar (Claude Code
+ * 2.1.330 and later). The band and the pitch carry none, and `celebrate: off` has no goal board, so no roar or groan.
+ * A build that does not take `sound` throws: the same look is then sent once more without it, inside the same try
+ * (still one look per key), unless a newer set, an off, a clear or a start began meanwhile; when that send lands, no
+ * later set of the module's life asks for sound. When it is refused too, it said nothing of sound.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -487,6 +496,13 @@ let lookDrawn = false
 let lookStands = false
 let lookSets = 0
 let lookGen = 0
+/**
+ * Whether this module stopped asking for sound (plugin 0.13.0): set when a set that carried the pixel corner's sound
+ * was refused and the same look sent without it then landed (a build that does not take `sound`, before Claude Code
+ * 2.1.330); from then no set of the module's life carries one. A refusal of both sends says nothing of sound, and
+ * leaves it unset. A reload starts the module over, so `session.start` does not reset it.
+ */
+let soundDropped = false
 /** The `teamScene` option: `pitch` or `pixel`; null for the band (anything else), set at load. */
 let teamScene: SceneKind | null = null
 /**
@@ -2262,6 +2278,8 @@ type SceneWant = {
   draw: () => string
   /** The pixel corner's: the memory it was made from, and whether it is live (or goal). */
   pixel?: { mem: PixelMemory; live: boolean }
+  /** The pixel corner's sound for its board (plugin 0.13.0, `pixelSound`); the band and the pitch have none. */
+  sound?: ThemeSound
 }
 
 /** The colors a scene is drawn in: the look's two (none: pitch green). */
@@ -2275,7 +2293,8 @@ function sceneColors(want: LookWant): { main: string; second?: string } {
  * goal it is with the other team's colors, the look's flag, and since plugin 0.12.0 the goal's word and the corner's
  * place, so two languages or two places are never one scene) and its drawing: the look's colors, the board, the flag as
  * the scarf, at a goal its word, at the other side's goal its kind and that team's colors, and the place
- * (`teamScenePlace`).
+ * (`teamScenePlace`); and (plugin 0.13.0) its sound, from the board's state and whose goal it is (`pixelSound`), both
+ * of which the key holds, so the sound changes only where the scene does.
  */
 function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
   const colors = sceneColors(want)
@@ -2302,6 +2321,7 @@ function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
         place,
       }),
     pixel: { mem, live: board.state !== 'idle' },
+    sound: pixelSound(board.state, by),
   }
 }
 
@@ -2459,6 +2479,11 @@ async function lookWithoutView($: EngineInterface): Promise<void> {
  * notes its look in that memory (the memory's second writer), unless the look is off, a set made since won (`over`)
  * or the memory was forgotten: when the scene is already the look last tried, when no app is attached to draw it, and
  * before a set. Whether the look last tried is our corner live or in a goal (`lookLive`) is written with its key.
+ * A pixel scene's set carries its sound (plugin 0.13.0) until the module drops sound (`soundDropped`). When that set
+ * throws, the same look (the same scene's name, under the same key: still one look) is sent once more without the
+ * sound, only while the look is not off and no set, off, clear or start began and no forget came meanwhile; else the
+ * look is a refusal, its scene dropped. Sound is dropped for the module's life only when that second send lands; when
+ * it throws too, nothing is set (its scene dropped) and the next look asks for sound again.
  * May reject (its callers catch).
  */
 async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | null, now: number, over?: string): Promise<void> {
@@ -2497,9 +2522,22 @@ async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | nu
       entry = { name: sceneName(scene.kind, now), source: scene.draw(), alt: scene.alt }
       keepScene(entry)
     }
-    const answer: unknown = await $.theme.set(
-      entry === null ? look : { colors: look.colors, backdrop: { scene: entry.name, glass: { ...SCENE_GLASS } } },
-    )
+    const args = entry === null ? look : { colors: look.colors, backdrop: { scene: entry.name, glass: { ...SCENE_GLASS } } }
+    const sound = soundDropped ? undefined : scene?.sound
+    let answer: unknown
+    if (sound === undefined) answer = await $.theme.set(args)
+    else {
+      try {
+        answer = await $.theme.set({ ...args, sound })
+      } catch (refused) {
+        // Perhaps a build that does not take `sound`: the same look once more without it, unless a set, an off, a
+        // clear or a start began meanwhile, or the pixel memory was forgotten (then this look is a refusal). Sound
+        // is dropped only when that send lands.
+        if ((await lookIsOff($)) || mine !== lookSets || gen !== lookGen || forgotten()) throw refused
+        answer = await $.theme.set(args)
+        soundDropped = true
+      }
+    }
     set = true
     drawn = isObject(answer) && answer.isDrawn === true
   } catch {

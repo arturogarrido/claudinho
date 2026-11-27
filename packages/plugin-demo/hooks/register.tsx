@@ -3,14 +3,15 @@ import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-co
 import { FRAME_MS, FULLTIME_MS, GOAL_FRAMES, celebrationBall, celebrationRow, goalRow, resultRow } from './celebration'
 import { FLAG_COLORS, TEAM_COLORS } from './team-colors'
 import { bandSvg, buildLook } from './team-look'
-import { pitchSvg, pixelSvg } from './team-scenes'
+import { pitchSvg, pixelSound, pixelSvg } from './team-scenes'
 
 /**
  * Development only. Shows the Claudinho plugin's OWN drawings in the Claude desktop app, on demand, with no match
  * needed, so a change to what the plugin draws is seen in the app before it merges. `scripts/plugin-demo.sh` puts the
  * plugin's `team-scenes.ts`, `team-look.ts`, `team-colors.ts` (and the color builder) and `celebration.tsx` beside this
  * module, so what this draws is what the plugin on that checkout draws. It sets a scene the way the plugin does
- * (`$.theme.set`, the same glass, one `Svg`), and plays the goal and full-time celebration in the band above the prompt
+ * (`$.theme.set`, the same glass, one `Svg`; with `/demo sound`, the stadium's sound the plugin's `pixelSound` gives,
+ * sent again without it when the set throws, as the plugin does), and plays the goal and full-time celebration in the band above the prompt
  * with the plugin's own `celebrationRow`, `celebrationBall`, `goalRow` and `resultRow`, for the plugin's own lengths
  * (`FRAME_MS`, `GOAL_FRAMES`, `FULLTIME_MS`); it runs none of the plugin's hooks, reads no score and runs no CLI.
  *
@@ -27,6 +28,10 @@ import { pitchSvg, pixelSvg } from './team-scenes'
  *   /demo left       the stadium at the bottom left (the plugin's teamScenePlace: left) for every later drawing
  *   /demo right      the stadium at the bottom right again (the default)
  *   /demo en         the goal's word on the board in English (GOAL!: GOOOAL); es (¡GOL!), pt (GOL!): GOOOL; fr (BUT !): BUUUT
+ *   /demo sound      every later drawing of the stadium (idle, live, goal, other; not the band or the pitch) carries
+ *                    the plugin's sound for it (wind, the murmur, the roar, the groan, and a whistle on a click); sets
+ *                    the live stadium now. The desktop app plays it once the speaker in the session's title bar is on
+ *   /demo sound off  the stadium's drawings carry no sound again; sets the live stadium now, silent
  *   /demo off        clears the look, and ends a celebration that is playing
  *
  * A celebration does not touch the look, and a scene's goal waiting to finish goes on beside it; a later `mascot`,
@@ -56,6 +61,8 @@ const TEAMS: Record<string, Team> = {
   arsenal: { id: 'espn:359', name: 'Arsenal', home: 'ARS', away: 'PUM', otherId: 'espn:233', side: 'home' },
 }
 type What = 'pitch' | 'idle' | 'live' | 'goal' | 'other'
+/** What a person hears for each stadium drawing, as the reply names it (the sound itself is the plugin's `pixelSound`). */
+const HEARD: Record<Exclude<What, 'pitch'>, string> = { idle: 'the wind', live: 'the murmur', goal: 'the roar', other: 'the groan' }
 
 /** A celebration's kind: the goal's (`mascot`) or full time's. */
 type Kind = 'mascot' | 'fulltime'
@@ -77,6 +84,8 @@ let serial = 0
 let run = 0
 let place: Place = 'right'
 let lang = 'en'
+/** Whether the stadium's drawings carry the plugin's sound (`/demo sound`, `/demo sound off`). */
+let sound = false
 const scenes: Array<{ name: string; source: string }> = []
 let playing: Play | null = null
 
@@ -137,16 +146,16 @@ export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'demo',
-      description: `Claudinho's drawings, for a look in the app: ${Object.keys(TEAMS).join(', ')}, band, pitch, idle, live, goal, other, mascot, fulltime, left, right, ${Object.keys(WORDS).join(', ')}, off`,
+      description: `Claudinho's drawings, for a look in the app: ${Object.keys(TEAMS).join(', ')}, band, pitch, idle, live, goal, other, mascot, fulltime, left, right, ${Object.keys(WORDS).join(', ')}, sound, sound off, off`,
     })
     return next(e)
   })
 
   on('command.run', { command: 'demo' }, async ($, e) => {
-    const word = e.args.trim().toLowerCase()
+    const word = e.args.trim().toLowerCase().split(/\s+/).join(' ')
     // Only a command that sets or clears a drawing takes over from a goal that is waiting: a typo, or `/demo` alone,
     // answers with the list and leaves the goal to finish; so does a language, which draws nothing.
-    const sets = word === 'off' || word === 'band' || word === 'pitch' || word === 'idle' || word === 'live' || word === 'goal' || word === 'other' || word === 'left' || word === 'right' || Object.hasOwn(TEAMS, word)
+    const sets = word === 'off' || word === 'sound' || word === 'sound off' || word === 'band' || word === 'pitch' || word === 'idle' || word === 'live' || word === 'goal' || word === 'other' || word === 'left' || word === 'right' || Object.hasOwn(TEAMS, word)
     if (sets) run += 1
     const mine = run
     const show = async (what: What): Promise<string> => {
@@ -156,9 +165,18 @@ export const register: Register = (on) => {
       scenes.push(kept)
       while (scenes.length > 3) scenes.shift()
       const { look } = buildLook(team.name, TEAM_COLORS[team.id])
+      const args = { colors: look.colors, backdrop: { scene: name, glass: { ...GLASS } } }
+      const drawn = (set: { isDrawn: boolean; reason?: string }): string => (set.isDrawn ? 'drawn' : `not drawn (${set.reason})`)
       try {
-        const set = await $.theme.set({ colors: look.colors, backdrop: { scene: name, glass: { ...GLASS } } })
-        return set.isDrawn ? 'drawn' : `not drawn (${set.reason})`
+        if (!sound || what === 'pitch') return drawn(await $.theme.set(args))
+        try {
+          const set = await $.theme.set({ ...args, sound: pixelSound(what === 'other' ? 'goal' : what, what === 'other' ? 'other' : 'pick') })
+          return `${drawn(set)}, sound: ${HEARD[what]} and a whistle on a click`
+        } catch (refused) {
+          // The plugin's fall-back: the same look once more, without the sound.
+          const why = refused instanceof Error ? refused.message : String(refused)
+          return `${drawn(await $.theme.set(args))}, sound refused (${why}): set without it`
+        }
       } catch (err) {
         // A set that threw asked for nothing: its drawing is not kept for a later render.
         const at = scenes.indexOf(kept)
@@ -177,6 +195,13 @@ export const register: Register = (on) => {
       }
       await $.theme.clear()
       return { text: 'Demo look cleared.' }
+    }
+    if (word === 'sound' || word === 'sound off') {
+      sound = word === 'sound'
+      if (!sound) return { text: `Sound off: the stadium's drawings carry none. ${team.name}, live: ${await show('live')}` }
+      return {
+        text: `Sound on for the stadium's drawings. ${team.name}, live: ${await show('live')}. Press the speaker in the session's title bar to hear it.`,
+      }
     }
     if (word === 'mascot' || word === 'fulltime') {
       // The band's celebration: it touches no look, so a scene's goal waiting to finish goes on. It answers at once;
@@ -215,7 +240,7 @@ export const register: Register = (on) => {
       await show('live')
       return { text: `${team.name}, ${word}: ${answer}, then live` }
     }
-    return { text: `Try: /demo ${Object.keys(TEAMS).join(' | ')} | band | pitch | idle | live | goal | other | mascot | fulltime | left | right | ${Object.keys(WORDS).join(' | ')} | off` }
+    return { text: `Try: /demo ${Object.keys(TEAMS).join(' | ')} | band | pitch | idle | live | goal | other | mascot | fulltime | left | right | ${Object.keys(WORDS).join(' | ')} | sound | sound off | off` }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

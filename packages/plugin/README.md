@@ -200,6 +200,15 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
 The scenes are drawn for a dark page: on a light one they are faint. Like the band, they show in the Claude desktop
 app (in a test on Nov 22, 2026, the Claude mobile app showed neither the colors nor a scene). Changing the scene in `/config` reloads the plugin, and the next reading sets the new one.
 
+**The stadium's sound** (plugin 0.13.0): with `teamScene: pixel`, the stadium also sounds its state in the Claude
+desktop app on Claude Code 2.1.330 or later, once you press the speaker in the session's title bar (the speaker is the
+opt-in: nothing plays until you press it): a crowd's murmur while your team's match is live, a roar at your team's
+goal, a groan at the other team's, faint wind while the stadium is empty, and a referee's whistle when you click the
+backdrop. With `celebrate: off` there is no goal moment, so no roar or groan. The app makes the sound itself from
+numbers the plugin hands it (noise and tones), never a recording. The band and the pitch have no sound, and nothing
+plays in the terminal, an editor or the mobile app. The app lets you turn the background sound off and keep the
+whistle. On an older Claude Code the stadium is set without its sound.
+
 ## Where it works
 
 - **Claude Code in a terminal, and the desktop app's Code tab.** The band, the toasts, the
